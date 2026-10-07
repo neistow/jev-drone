@@ -7,6 +7,11 @@ Layering:
   ~3 Hz   Jev tactical judgment          (tactics.Tactician, advisory only)
 """
 import os, sys, json, time, argparse
+try:
+    import dotenv
+    dotenv.load_dotenv()
+except ImportError:
+    pass
 import numpy as np
 import mujoco
 import flight
@@ -72,8 +77,12 @@ class Guidance:
         self.sweep = 0.0
         self.lost_for = 0.0
         self.climb_hold = 0
+        self.brake_hold = 0
         self.commit = None
         self.commit_left = 0
+        self.last_mv = None
+        self._filtered_slide = 0.0
+        self.evade_side = None
         self.search_yaw = None
         # world-frame estimate of the target, built from our own pose + the camera
         # bearing/range. No ground truth; this is what the aircraft could work out.
@@ -160,19 +169,47 @@ class Guidance:
 
         # --- Jev's tactical commitment (advisory) --------------------------------
         acted = False
-        if (use_jev and judg["source"] == "jev" and judg["age_s"] < THRESH["stale_after_s"]
-                and (decision_needed(scene) or self.climb_hold)):
+        eff_mv = "hold_course"
+        jev_active = (use_jev and judg["source"] == "jev" and judg["age_s"] < THRESH["stale_after_s"])
+
+        if jev_active and (decision_needed(scene) or self.climb_hold):
             self.commit_left = max(0, self.commit_left - 1)
-            if self.commit_left == 0 or judg["risk"] >= THRESH["override_risk"]:
+            
+            # If Jev wants to hold course but we're committed to a gap, ignore Jev until timer expires
+            if judg["maneuver"] == "hold_course" and self.commit in ("gap_left", "gap_right") and self.commit_left > 0:
+                judg["maneuver"] = self.commit
+
+            if self.commit_left == 0 or judg["risk"] >= THRESH["override_risk"] or judg["maneuver"] not in ("hold_course", self.commit):
                 if judg["maneuver"] != self.commit:
                     self.commit, self.commit_left = judg["maneuver"], THRESH["commit_steps"]
-            mv = self.commit
-            if not decision_needed(scene):
-                mv = "hold_course"                 # the way is clear; stop maneuvering
-                self.commit, self.commit_left = None, 0
-            if judg["target_truly_lost"] >= THRESH["really_lost"] and mv != "climb":
-                mv = "reacquire"
+            
+            eff_mv = self.commit
+            
+            if not decision_needed(scene) and self.commit_left == 0:
+                eff_mv = "hold_course"
+                self.commit = None
+
+            if judg["target_truly_lost"] >= THRESH["really_lost"] and eff_mv != "climb":
+                eff_mv = "reacquire"
+        else:
+            self.commit, self.commit_left = None, 0
+
+        is_gap = lambda m: m in ("gap_left", "gap_right")
+        if self.last_mv is not None and self.last_mv != eff_mv:
+            if (is_gap(self.last_mv) or self.last_mv == "hold_course") and (is_gap(eff_mv) or eff_mv == "hold_course"):
+                self.brake_hold = THRESH.get("brake_steps", 15)
+        self.last_mv = eff_mv
+
+        if jev_active and (decision_needed(scene) or self.climb_hold or self.commit_left > 0):
+            mv = eff_mv
             acted = True
+
+            if mv == "gap_left":
+                self.evade_side = 1.0
+            elif mv == "gap_right":
+                self.evade_side = -1.0
+            elif mv != "brake":
+                self.evade_side = None
 
             if mv in ("gap_left", "gap_right"):
                 left = mv == "gap_left"
@@ -208,16 +245,28 @@ class Guidance:
             absolute_yaw = self.yaw_sp
             fwd, slide = SEARCH_SPEED, 0.0
 
+        if self.brake_hold > 0:
+            fwd, slide = fwd * 0.85, slide * 0.35
+
         # --- hard reflex: code overrides everything, Jev included ------------------
         # Reflex on what is in the path, not on what is merely alongside.
         near, nb = scene["path_ahead_m"], np.deg2rad(scene["nearest_bearing_deg"])
         reflex = near < REFLEX_M
         if reflex:
-            side = 1.0 if left_room > right_room else -1.0
+            side = self.evade_side if self.evade_side is not None else (1.0 if left_room > right_room else -1.0)
             slide = side * 2.6 * min(1.0, max(left_room, right_room) / 3.0)
             fwd = min(fwd, 0.25) if near > 1.3 else -0.8
 
+        # Make LPF snappier
+        self._filtered_slide = 0.4 * self._filtered_slide + 0.6 * slide
+        slide = self._filtered_slide
+
         if fresh:
+            # yaw into the slide so the drone does not translate sideways blindly
+            # THIS IS CRITICAL: pointing the camera into the gap lets it see free space
+            # which disengages the reflex brake and lets it fly through moving walls!
+            if abs(slide) > 0.1:
+                turn_bias += float(np.clip(np.arctan2(slide, max(fwd, 0.5)), -0.8, 0.8) * 0.6)
             self.yaw_sp = absolute_yaw if absolute_yaw is not None else yaw + yaw_rel + turn_bias
         yaw_cmd = self.yaw_sp
 
@@ -234,7 +283,7 @@ class Guidance:
         return v_world, yaw_cmd, acted, reflex
 
 
-def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None, realtime=True):
+def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None, realtime=True, export=None):
     rng = np.random.default_rng(seed)
     m = mujoco.MjModel.from_xml_path("world.xml")
     d = mujoco.MjData(m)
@@ -274,6 +323,8 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
     vis, frames, standoffs, hits, hit_steps, grounded = 0, 0, [], 0, set(), 0
     crashed_at, max_x, crossed = None, -99.0, False
     jev_steps = reflex_steps = 0
+    path_log = []
+    decision_log = []
     n = int(seconds / dt)
 
     wall0 = time.time()
@@ -304,6 +355,14 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
             if tac:
                 prev = judg.get("maneuver"), judg.get("source")
                 judg = tac.read(t)
+                if export and (judg.get("maneuver"), judg.get("source")) != prev:
+                    decision_log.append({
+                        "time": t,
+                        "pos": pos.tolist(),
+                        "yaw": yaw,
+                        "scene": scene,
+                        "judg": judg
+                    })
                 if TRACE and (judg.get("maneuver"), judg.get("source")) != prev:
                     print("  t=%5.1f %-11s p=%.2f risk=%.2f lost=%.2f | pos=(%.1f,%.1f,%.1f) blk=%d/5 near=%.2f tall=%s vis=%s"
                           % (t, judg["maneuver"], (judg.get("probabilities") or {}).get(judg["maneuver"], 0),
@@ -312,6 +371,8 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
                              scene["free_ahead_above_m"], scene["target"]["visible"]),
                           flush=True)
             v_des, yaw_cmd, acted, reflex = guide(scene, judg, yaw, pos[2], use_jev, fresh, t, pos)
+            if export:
+                path_log.append([t, float(pos[0]), float(pos[1]), float(pos[2]), yaw])
             fresh = False
             jev_steps += acted
             reflex_steps += reflex
@@ -372,6 +433,13 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
     if tac:
         out["jev"] = tac.stats()
         tac.close()
+    if export:
+        with open(export, "w") as f:
+            json.dump({
+                "path": path_log,
+                "decisions": decision_log,
+                "summary": out
+            }, f, indent=2)
     return out
 
 
@@ -383,9 +451,10 @@ if __name__ == "__main__":
     p.add_argument("--video", default=None)
     p.add_argument("--hz", type=float, default=None)
     p.add_argument("--budget", type=int, default=None)
+    p.add_argument("--export", type=str, default=None, help="JSON file to save path and decisions for fine-tuning")
     p.add_argument("--fast", action="store_true", help="run faster than real time (unfair to Jev)")
     a = p.parse_args()
     for s in a.seeds:
-        r = episode(s, a.seconds, not a.no_jev, a.video, a.hz, a.budget, realtime=not a.fast)
+        r = episode(s, a.seconds, not a.no_jev, a.video, a.hz, a.budget, realtime=not a.fast, export=a.export)
         print(json.dumps(r))
         sys.stdout.flush()

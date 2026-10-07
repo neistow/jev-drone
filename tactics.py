@@ -25,6 +25,7 @@ THRESHOLDS = {
     "commit_steps": 55,       # ~1.4s at 50Hz: commit to a maneuver instead of chattering
     "override_risk": 1.7,     # ...unless things get this dangerous, then re-decide now
     "really_lost": 0.5,       # Noul above which we stop trusting the remembered bearing
+    "brake_steps": 8,         # steps to apply soft inertia dampening
 }
 
 # The drone's own capabilities. Without this the model cannot know that "climb"
@@ -35,7 +36,7 @@ AIRCRAFT = {
     "can_climb_to_m": 3.0,
     "climb_takes_about_s": 1.5,
     "top_speed_mps": 3.6,
-    "note": "All distances are from a forward camera. 25 m means nothing was detected.",
+    "note": "All distances are from a forward camera. 25 m means nothing was detected. The drone can strafe sideways while keeping the nose pointed at the target, so gap maneuvers won't necessarily cause loss of tracking.",
 }
 
 MISSION = ("Follow the ground rover and keep it in view. Do not hit anything. "
