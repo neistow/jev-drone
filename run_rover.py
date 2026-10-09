@@ -79,7 +79,7 @@ class Guidance:
             mv = judg["maneuver"]
             if self.commit is None or self.commit_left <= 0:
                 self.commit = mv
-                self.commit_left = 12
+                self.commit_left = 32
             else:
                 mv = self.commit
                 self.commit_left -= 1
@@ -136,13 +136,14 @@ def main():
     parser.add_argument("--seconds", type=float, default=65.0)
     parser.add_argument("--no-jev", action="store_true")
     parser.add_argument("--video", default=None)
+    parser.add_argument("--log", type=str, default=None, help="Export JSONL logs to this file")
     args = parser.parse_args()
 
     m = mujoco.MjModel.from_xml_path("rover_world.xml")
     d = mujoco.MjData(m)
     
     pilot = Pilot(m)
-    eye = Eye(m)
+    eye = Eye(m, shell=("overpass_top",))
     guide = Guidance(eye)
 
     use_jev = not args.no_jev
@@ -201,7 +202,21 @@ def main():
                 j = tactician.read(t)
                 if j:
                     judg = j
-            v_des, yaw_cmd, _, _ = guide(scene, judg, yaw, use_jev, fresh, t, pos)
+            v_des, yaw_cmd, acted, reflex = guide(scene, judg, yaw, use_jev, fresh, t, pos)
+            
+            if args.log:
+                import json
+                log_entry = {
+                    "time": t,
+                    "pos": pos.tolist(),
+                    "yaw": float(yaw),
+                    "scene": scene,
+                    "judg": judg,
+                    "guide_action": {"v_des": float(v_des), "yaw_cmd": float(yaw_cmd), "acted": acted, "reflex": reflex, "commit": guide.commit, "commit_left": guide.commit_left}
+                }
+                with open(args.log, "a") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+                    
             fresh = False
             
         d.ctrl[:] = pilot(d, v_des, yaw_cmd, dt)

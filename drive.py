@@ -84,7 +84,7 @@ class Eye:
     MAX_RANGE = 45.0
     TILT_DEG = -5.0
     IGNORE_BELOW_M = 0.3
-    EYE_FOVY = 91.0
+    EYE_FOVY = 60.0
 
     def __init__(self, model, target_body="rover", ignore_below=IGNORE_BELOW_DEFAULT,
                  floor_geom="floor", shell=(), walls=()):
