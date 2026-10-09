@@ -166,6 +166,12 @@ class Guidance:
         # Reflex
         fatal_ranges = [sec[i] if scene["sector_clearance_m"][i] < 0.4 else 25.0 for i in range(5)]
         near_fatal = min(fatal_ranges)
+        
+        # JEV knows we can smash cardboard, so don't brake for it
+        if scene.get("nearest_obstacle_type") == "cardboard":
+            near_fatal = 25.0
+            fatal_ranges = [25.0] * 5
+
         if near_fatal < 1.3:
             reflex = 1
             fwd = min(fwd, 0.25)
