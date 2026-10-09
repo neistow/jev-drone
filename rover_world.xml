@@ -24,16 +24,64 @@
     <light pos="0 0 12" dir="0 0 -1" directional="true" diffuse=".6 .6 .6"/>
     <geom name="floor" type="plane" size="90 90 .05" material="grid"/>
 
-    <!-- 1. slalom -->
-    <geom name="p0" type="cylinder" material="pillar" size=".35 2.5" pos="  7  1.8 2.5"/>
-    <geom name="p1" type="cylinder" material="pillar" size=".35 2.5" pos=" 10 -1.8 2.5"/>
-    <geom name="p2" type="cylinder" material="pillar" size=".35 2.5" pos=" 13  1.8 2.5"/>
+        <!-- 1. Wide Slalom -->
+    <geom name="p0" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0 -40.0 2.5"/>
+    <geom name="p1" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0 -32.5 2.5"/>
+    <geom name="p2" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0 -25.0 2.5"/>
+    <geom name="p3" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0 -17.5 2.5"/>
+    <geom name="p4" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0 -10.0 2.5"/>
+    <geom name="p5" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0  -2.5 2.5"/>
+    <geom name="p6" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0   5.0 2.5"/>
+    <geom name="p7" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0  12.5 2.5"/>
+    <geom name="p8" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0  20.0 2.5"/>
+    <geom name="p9" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0  27.5 2.5"/>
+    <geom name="p10" type="cylinder" material="pillar" size=".35 2.5" pos="  7.0  35.0 2.5"/>
+    <geom name="p11" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5 -36.2 2.5"/>
+    <geom name="p12" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5 -28.8 2.5"/>
+    <geom name="p13" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5 -21.2 2.5"/>
+    <geom name="p14" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5 -13.8 2.5"/>
+    <geom name="p15" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5  -6.2 2.5"/>
+    <geom name="p16" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5   1.2 2.5"/>
+    <geom name="p17" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5   8.8 2.5"/>
+    <geom name="p18" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5  16.2 2.5"/>
+    <geom name="p19" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5  23.8 2.5"/>
+    <geom name="p20" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5  31.2 2.5"/>
+    <geom name="p21" type="cylinder" material="pillar" size=".35 2.5" pos=" 11.5  38.8 2.5"/>
+    <geom name="p22" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0 -40.0 2.5"/>
+    <geom name="p23" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0 -32.5 2.5"/>
+    <geom name="p24" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0 -25.0 2.5"/>
+    <geom name="p25" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0 -17.5 2.5"/>
+    <geom name="p26" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0 -10.0 2.5"/>
+    <geom name="p27" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0  -2.5 2.5"/>
+    <geom name="p28" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0   5.0 2.5"/>
+    <geom name="p29" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0  12.5 2.5"/>
+    <geom name="p30" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0  20.0 2.5"/>
+    <geom name="p31" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0  27.5 2.5"/>
+    <geom name="p32" type="cylinder" material="pillar" size=".35 2.5" pos=" 16.0  35.0 2.5"/>
+    <geom name="p33" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5 -36.2 2.5"/>
+    <geom name="p34" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5 -28.8 2.5"/>
+    <geom name="p35" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5 -21.2 2.5"/>
+    <geom name="p36" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5 -13.8 2.5"/>
+    <geom name="p37" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5  -6.2 2.5"/>
+    <geom name="p38" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5   1.2 2.5"/>
+    <geom name="p39" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5   8.8 2.5"/>
+    <geom name="p40" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5  16.2 2.5"/>
+    <geom name="p41" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5  23.8 2.5"/>
+    <geom name="p42" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5  31.2 2.5"/>
+    <geom name="p43" type="cylinder" material="pillar" size=".35 2.5" pos=" 20.5  38.8 2.5"/>
 
-    <!-- 3. turnstiles: arms that sweep across the lane -->
-    <body name="arm0" mocap="true" pos="26 0 1.7">
-      <geom name="arm0_geom" type="capsule" material="mover" size=".22 2.6" euler="90 0 0"/>
-    </body>
-    <body name="arm1" mocap="true" pos="31 0 1.7">
+    
+    <!-- 3. Overpass -->
+    <geom name="overpass_top" type="box" material="pillar" size="3.0 45.0 0.25" pos="28.5 0 1.5"/>
+    <geom name="overpass_sup1" type="box" material="pillar" size="3.0 0.5 0.75" pos="28.5 -35 0.75"/>
+    <geom name="overpass_sup2" type="box" material="pillar" size="3.0 0.5 0.75" pos="28.5 -25 0.75"/>
+    <geom name="overpass_sup3" type="box" material="pillar" size="3.0 0.5 0.75" pos="28.5 -15 0.75"/>
+    <geom name="overpass_sup4" type="box" material="pillar" size="3.0 0.5 0.75" pos="28.5  -5 0.75"/>
+    <geom name="overpass_sup5" type="box" material="pillar" size="3.0 0.5 0.75" pos="28.5   5 0.75"/>
+    <geom name="overpass_sup6" type="box" material="pillar" size="3.0 0.5 0.75" pos="28.5  15 0.75"/>
+    <geom name="overpass_sup7" type="box" material="pillar" size="3.0 0.5 0.75" pos="28.5  25 0.75"/>
+    <geom name="overpass_sup8" type="box" material="pillar" size="3.0 0.5 0.75" pos="28.5  35 0.75"/>
+<body name="arm1" mocap="true" pos="31 0 1.7">
       <geom name="arm1_geom" type="capsule" material="mover" size=".22 2.6" euler="90 0 0"/>
     </body>
 
@@ -45,13 +93,53 @@
       <geom name="gateR_geom" type="box" material="gate" size=".25 30.0 4.5"/>
     </body>
 
-    <!-- 5. a dense cluster -->
-    <geom name="p3" type="cylinder" material="pillar" size=".35 2.5" pos=" 50  1.5 2.5"/>
-    <geom name="p4" type="cylinder" material="pillar" size=".35 2.5" pos=" 51 -1.6 2.5"/>
-    <geom name="p5" type="cylinder" material="pillar" size=".35 2.5" pos=" 54  0.2 2.5"/>
-    <geom name="p6" type="cylinder" material="pillar" size=".35 2.5" pos=" 57 -2.2 2.5"/>
-    <geom name="p7" type="cylinder" material="pillar" size=".35 2.5" pos=" 58  2.0 2.5"/>
+    <!-- 5. Wide dense cluster -->
 
+    <geom name="p44" type="cylinder" material="pillar" size=".35 2.5" pos=" 58.9 -38.0 2.5"/>
+    <geom name="p45" type="cylinder" material="pillar" size=".35 2.5" pos=" 52.7 -22.1 2.5"/>
+    <geom name="p46" type="cylinder" material="pillar" size=".35 2.5" pos=" 60.5  14.1 2.5"/>
+    <geom name="p47" type="cylinder" material="pillar" size=".35 2.5" pos=" 63.2 -33.0 2.5"/>
+    <geom name="p48" type="cylinder" material="pillar" size=".35 2.5" pos=" 55.2 -37.6 2.5"/>
+    <geom name="p49" type="cylinder" material="pillar" size=".35 2.5" pos=" 51.7   0.4 2.5"/>
+    <geom name="p50" type="cylinder" material="pillar" size=".35 2.5" pos=" 48.5 -24.1 2.5"/>
+    <geom name="p51" type="cylinder" material="pillar" size=".35 2.5" pos=" 59.0   3.6 2.5"/>
+    <geom name="p52" type="cylinder" material="pillar" size=".35 2.5" pos=" 51.7   7.1 2.5"/>
+    <geom name="p53" type="cylinder" material="pillar" size=".35 2.5" pos=" 61.8 -39.5 2.5"/>
+    <geom name="p54" type="cylinder" material="pillar" size=".35 2.5" pos=" 61.7  15.9 2.5"/>
+    <geom name="p55" type="cylinder" material="pillar" size=".35 2.5" pos=" 53.8 -27.6 2.5"/>
+    <geom name="p56" type="cylinder" material="pillar" size=".35 2.5" pos=" 64.3 -13.1 2.5"/>
+    <geom name="p57" type="cylinder" material="pillar" size=".35 2.5" pos=" 49.6 -32.3 2.5"/>
+    <geom name="p58" type="cylinder" material="pillar" size=".35 2.5" pos=" 62.4   8.3 2.5"/>
+    <geom name="p59" type="cylinder" material="pillar" size=".35 2.5" pos=" 61.7  18.4 2.5"/>
+    <geom name="p60" type="cylinder" material="pillar" size=".35 2.5" pos=" 57.1  37.8 2.5"/>
+    <geom name="p61" type="cylinder" material="pillar" size=".35 2.5" pos=" 54.4   4.2 2.5"/>
+    <geom name="p62" type="cylinder" material="pillar" size=".35 2.5" pos=" 62.1   9.5 2.5"/>
+    <geom name="p63" type="cylinder" material="pillar" size=".35 2.5" pos=" 62.6   6.2 2.5"/>
+    <geom name="p64" type="cylinder" material="pillar" size=".35 2.5" pos=" 60.0 -36.3 2.5"/>
+    <geom name="p65" type="cylinder" material="pillar" size=".35 2.5" pos=" 51.9 -16.8 2.5"/>
+    <geom name="p66" type="cylinder" material="pillar" size=".35 2.5" pos=" 49.4 -21.4 2.5"/>
+    <geom name="p67" type="cylinder" material="pillar" size=".35 2.5" pos=" 49.7 -17.8 2.5"/>
+    <geom name="p68" type="cylinder" material="pillar" size=".35 2.5" pos=" 58.8 -10.8 2.5"/>
+    <geom name="p69" type="cylinder" material="pillar" size=".35 2.5" pos=" 54.3 -23.2 2.5"/>
+    <geom name="p70" type="cylinder" material="pillar" size=".35 2.5" pos=" 52.5  34.9 2.5"/>
+    <geom name="p71" type="cylinder" material="pillar" size=".35 2.5" pos=" 59.0   8.7 2.5"/>
+    <geom name="p72" type="cylinder" material="pillar" size=".35 2.5" pos=" 50.9  18.3 2.5"/>
+    <geom name="p73" type="cylinder" material="pillar" size=".35 2.5" pos=" 50.8  -9.6 2.5"/>
+    <geom name="p74" type="cylinder" material="pillar" size=".35 2.5" pos=" 64.8  11.2 2.5"/>
+    <geom name="p75" type="cylinder" material="pillar" size=".35 2.5" pos=" 57.5  14.8 2.5"/>
+    <geom name="p76" type="cylinder" material="pillar" size=".35 2.5" pos=" 62.3  22.1 2.5"/>
+    <geom name="p77" type="cylinder" material="pillar" size=".35 2.5" pos=" 51.9 -37.4 2.5"/>
+    <geom name="p78" type="cylinder" material="pillar" size=".35 2.5" pos=" 53.4 -18.6 2.5"/>
+    <geom name="p79" type="cylinder" material="pillar" size=".35 2.5" pos=" 51.6  35.4 2.5"/>
+    <geom name="p80" type="cylinder" material="pillar" size=".35 2.5" pos=" 62.9 -14.8 2.5"/>
+    <geom name="p81" type="cylinder" material="pillar" size=".35 2.5" pos=" 59.1  -8.3 2.5"/>
+    <geom name="p82" type="cylinder" material="pillar" size=".35 2.5" pos=" 63.5  -3.3 2.5"/>
+    <geom name="p83" type="cylinder" material="pillar" size=".35 2.5" pos=" 52.5 -20.3 2.5"/>
+    <geom name="p84" type="cylinder" material="pillar" size=".35 2.5" pos=" 57.5 -19.0 2.5"/>
+    <geom name="p85" type="cylinder" material="pillar" size=".35 2.5" pos=" 57.9  31.8 2.5"/>
+    <geom name="p86" type="cylinder" material="pillar" size=".35 2.5" pos=" 54.8 -22.5 2.5"/>
+    <geom name="p87" type="cylinder" material="pillar" size=".35 2.5" pos=" 65.0   0.8 2.5"/>
+    <geom name="p88" type="cylinder" material="pillar" size=".35 2.5" pos=" 49.5 -36.2 2.5"/>
     <!-- moving ground target the rover must follow -->
     <body name="rover" mocap="true" pos="6 0 .2">
       <geom name="rover_geom" type="box" material="rover" size=".35 .25 .2"/>

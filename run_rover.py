@@ -9,7 +9,7 @@ import mujoco
 from drive import Pilot, Eye
 from rover_tactics import decision_needed
 
-ROVER_SPEED = 1.15
+ROVER_SPEED = 0.85
 SEARCH_SPEED = 2.4
 TARGET_MAX_SPEED = 1.6
 STANDOFF = 3.5
@@ -19,11 +19,6 @@ def rover_pose(t):
 
 def drive_course(m, d, t):
     d.mocap_pos[m.body("rover").mocapid[0]] = rover_pose(t)
-    for i, name in enumerate(("arm0", "arm1")):
-        mid = m.body(name).mocapid[0]
-        c, s = np.cos((0.45 * t + i * 1.9)/2), np.sin((0.45 * t + i * 1.9)/2)
-        h = np.sqrt(0.5)
-        d.mocap_quat[mid] = np.array([c * h, c * h, s * h, s * h])
     c = 2.0 * np.sin(0.26 * t)
     for name, off in (("gateL", 31.6), ("gateR", -31.6)):
         mid = m.body(name).mocapid[0]
@@ -84,7 +79,7 @@ class Guidance:
             mv = judg["maneuver"]
             if self.commit is None or self.commit_left <= 0:
                 self.commit = mv
-                self.commit_left = 55
+                self.commit_left = 12
             else:
                 mv = self.commit
                 self.commit_left -= 1
