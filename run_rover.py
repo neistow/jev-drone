@@ -28,9 +28,10 @@ def drive_course(m, d, t):
 
 
 def baseline_heuristic(scene):
-    """A plain 2D heuristic that ignores vertical clearance. 
-    It will navigate pillars but get completely stuck at the overpass."""
-    sec = scene["sector_range_m"]
+    """A reactive 2D heuristic that uses vertical clearance. 
+    It will navigate pillars and go under the overpass, but struggles with the moving wall."""
+    # Filter out obstacles that we can drive under (clearance > 0.4m)
+    sec = [r if c < 0.4 else 25.0 for r, c in zip(scene["sector_range_m"], scene["sector_clearance_m"])]
     
     if scene["target"]["unseen_for_s"] > 1.0:
         return "reacquire"
@@ -39,8 +40,6 @@ def baseline_heuristic(scene):
         left_room = min(sec[0], sec[1])
         right_room = min(sec[3], sec[4])
         
-        # If the ceiling of the overpass is detected, all ranges drop below 3m.
-        # A simple heuristic thinks it's a solid wall and brakes.
         if max(sec) < 2.5:
             return "brake"
             
