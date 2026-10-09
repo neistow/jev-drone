@@ -164,13 +164,17 @@ class Eye:
         sectors_d = np.array_split(d_threats, self.N_SECTORS, axis=1)
         sectors_z = np.array_split(pz_world, self.N_SECTORS, axis=1)
         sectors_m = np.array_split(mask, self.N_SECTORS, axis=1)
+        sectors_seg = np.array_split(seg, self.N_SECTORS, axis=1)
         
         r = []
         c = []
+        closest_geom = None
+        min_overall_d = self.MAX_RANGE
         for i in range(self.N_SECTORS):
             sm = sectors_m[i]
             sd = sectors_d[i]
             sz = sectors_z[i]
+            sseg = sectors_seg[i]
             if not np.any(sm):
                 r.append(self.MAX_RANGE)
                 c.append(25.0)
@@ -180,6 +184,12 @@ class Eye:
                 # clearance is the min Z of obstacles within 1m of the closest obstacle
                 close_mask = sm & (sd < d_min + 1.0)
                 c.append(float(sz[close_mask].min()))
+                
+                # identify the closest object's semantic type
+                very_close_mask = sm & (sd < d_min + 0.1)
+                if d_min < min_overall_d and np.any(very_close_mask):
+                    min_overall_d = d_min
+                    closest_geom = sseg[very_close_mask][0]
 
         cx = self.W / 2
         bearing = None
@@ -198,6 +208,7 @@ class Eye:
             "sector_clearance_m": c,
             "sectors_blocked": sum(1 for d in r if d < 2.5),
             "nearest_obstacle_m": min(r),
+            "nearest_obstacle_type": "cardboard" if closest_geom is not None and "cardboard" in self.m.geom(closest_geom).name else "solid",
             "target": {
                 "visible": bearing is not None,
                 "bearing_rad": bearing if bearing is not None else 0.0,

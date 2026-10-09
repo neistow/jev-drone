@@ -32,7 +32,7 @@ ROVER = {
     "type": "differential drive rover (car), camera-only, no map and no GPS",
     "top_speed_mps": 3.6,
     "height_m": 0.35,
-    "note": "All distances are from a forward camera. 'sector_range_m' is distance to the closest object in each sector. 'sector_clearance_m' is the height of that object's lowest point above the ground. If an object has a clearance > 0.4m (e.g. a high ceiling), the rover can safely drive UNDER it.",
+    "note": "All distances are from a forward camera. 'sector_range_m' is distance to the closest object in each sector. 'sector_clearance_m' is the height of that object's lowest point above the ground. If an object has a clearance > 0.4m (e.g. a high ceiling), the rover can safely drive UNDER it. If the nearest obstacle is 'cardboard', the rover is strong enough to safely smash through it.",
 }
 
 MISSION = ("Follow the target rover and keep it in view. Do not hit anything. "
@@ -40,8 +40,7 @@ MISSION = ("Follow the target rover and keep it in view. Do not hit anything. "
 
 MANEUVERS = {
     "hold_course": (
-        "Either the path ahead is completely clear, or the objects ahead have high clearance (>0.4m) "
-        "allowing the rover to drive right under them. Keep driving straight at the target. "
+        "Either the path ahead is completely clear, or the objects ahead have high clearance (>0.4m), or the obstacle is 'cardboard' and can be smashed. Keep driving straight at the target. "
         "Also use this when waiting for a moving obstacle to clear your path."),
     "steer_left": (
         "A low-clearance obstacle blocks the way ahead, and the left sectors show clearly more free "
