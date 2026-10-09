@@ -31,6 +31,7 @@ class Guidance:
         self.eye = eye
         self.yaw_sp = None
         self.sweep = 0.0
+        self.sweep_dir = 1.0
         self.tgt_w = None
         self.tgt_v = np.zeros(2)
         self.tgt_t = 0.0
@@ -56,6 +57,10 @@ class Guidance:
         reflex = 0
 
         # Target tracking (world frame)
+        if tgt["visible"]:
+            self.sweep = 0.0
+            self.sweep_dir = 1.0
+
         if tgt["visible"] and fresh and pos is not None:
             c, s = np.cos(yaw + tgt["bearing_rad"]), np.sin(yaw + tgt["bearing_rad"])
             w = pos[:2] + tgt["range_m"] * np.array([c, s])
@@ -111,14 +116,20 @@ class Guidance:
             fwd = -0.8
         elif mv == "reacquire":
             if fresh:
+                if self.sweep == 0.0:
+                    delta = (self._search_heading(yaw, t, pos) - yaw + np.pi) % (2 * np.pi) - np.pi
+                    self.sweep_dir = -1.0 if delta < 0 else 1.0
                 self.sweep += 0.35
-                self.yaw_sp = self._search_heading(yaw, t, pos) + 0.45 * np.sin(self.sweep)
+                self.yaw_sp = self._search_heading(yaw, t, pos) + self.sweep_dir * 0.45 * np.sin(self.sweep)
             absolute_yaw = self.yaw_sp
             fwd = SEARCH_SPEED
         else:
             if fresh:
+                if self.sweep == 0.0:
+                    delta = (self._search_heading(yaw, t, pos) - yaw + np.pi) % (2 * np.pi) - np.pi
+                    self.sweep_dir = -1.0 if delta < 0 else 1.0
                 self.sweep += 0.3
-                self.yaw_sp = self._search_heading(yaw, t, pos) + 0.35 * np.sin(self.sweep)
+                self.yaw_sp = self._search_heading(yaw, t, pos) + self.sweep_dir * 0.35 * np.sin(self.sweep)
             absolute_yaw = self.yaw_sp
 
         # Reflex
@@ -126,11 +137,20 @@ class Guidance:
         near_fatal = min(fatal_ranges)
         if near_fatal < 1.3:
             reflex = 1
-            absolute_yaw = None  # Reflex overrides guidance
             fwd = min(fwd, 0.25)
             if fatal_ranges[2] < 1.3:
+                absolute_yaw = None  # Reflex overrides guidance
                 fwd = -0.8
                 turn_bias = 0.5 if fatal_ranges[1] > fatal_ranges[3] else -0.5
+            else:
+                left_fatal = min(fatal_ranges[0], fatal_ranges[1])
+                right_fatal = min(fatal_ranges[3], fatal_ranges[4])
+                if left_fatal < 0.8 and right_fatal >= 0.8:
+                    absolute_yaw = None
+                    turn_bias = -0.5
+                elif right_fatal < 0.8 and left_fatal >= 0.8:
+                    absolute_yaw = None
+                    turn_bias = 0.5
 
         if fresh:
             self.yaw_sp = absolute_yaw if absolute_yaw is not None else yaw + turn_bias
