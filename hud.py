@@ -147,6 +147,8 @@ class Hud:
                   ("confidence", judg.get("confidence", 0.0), 1.0, GREEN)]
         if "target_truly_lost" in judg:
             meters.append(("target lost", judg["target_truly_lost"], 1.0, ACCENT))
+        if "override_safety_reflex" in judg:
+            meters.append(("smash mode", judg["override_safety_reflex"], 1.0, RED))
         for label, val, vmax, col in meters:
             dr.text((x0, y), label.ljust(11), font=font(11), fill=DIM)
             self._bar(dr, x0 + 104, y + 2, w - 156, 8, val / vmax, col)
@@ -178,4 +180,6 @@ class Hud:
                 fill=ACCENT if tel["mode"].startswith("JEV") else DIM)
         if tel.get("climbing"):
             dr.text((self.vw - 330, self.vh - 52), "CLIMBING OVER BARRIER", font=font(11, True), fill=GREEN)
+        elif judg.get("override_safety_reflex", 0) > 0.5:
+            dr.text((self.vw - 330, self.vh - 52), "CARDBOARD DETECTED: SMASHING!", font=font(13, True), fill=RED)
         return np.asarray(img.convert("RGB"))

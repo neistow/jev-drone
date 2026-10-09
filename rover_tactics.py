@@ -19,7 +19,7 @@ THRESHOLDS = {
     "stale_after_s": 1.5,     # ignore a judgment older than this
     "risk_slow_down": 1.45,   # score above which we bleed speed
     "call_hz": 3.0,           # upper bound on how often we ask (API SAFETY)
-    "call_budget": 160,       # hard cap per episode, never burn credits (API SAFETY)
+    "call_budget": 400,       # hard cap per episode, never burn credits (API SAFETY)
     "consult_within_m": 4.0,  # only ask when something is actually in the way...
     "consult_lost_s": 1.0,    # ...or the target has been missing this long
     "commit_steps": 6,        # ~0.5s at 12.5Hz: commit to a maneuver

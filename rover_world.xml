@@ -13,12 +13,13 @@
   <asset>
     <texture type="skybox" builtin="gradient" rgb1=".5 .65 .85" rgb2=".1 .15 .25" width="512" height="512"/>
     <texture name="grid" type="2d" builtin="checker" rgb1=".22 .24 .26" rgb2=".28 .30 .33" width="512" height="512"/>
+    <texture name="cardboard_tex" type="2d" file="assets/cardboard.png"/>
     <material name="grid" texture="grid" texrepeat="18 18" reflectance="0"/>
     <material name="pillar" rgba=".55 .55 .60 1"/>
     <material name="rover"  rgba=".95 .15 .10 1"/>
     <material name="mover"  rgba=".95 .60 .10 1"/>
     <material name="gate"   rgba=".20 .70 .85 1"/>
-    <material name="cardboard" rgba=".80 .65 .40 1"/>
+    <material name="cardboard" texture="cardboard_tex" texrepeat="1 1" specular="0.1" shininess="0.1"/>
   </asset>
 
   <worldbody>
