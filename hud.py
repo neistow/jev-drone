@@ -12,8 +12,9 @@ CYAN    = (46, 196, 241)      # perception
 GREEN   = (64, 214, 141)
 RED     = (240, 78, 72)
 
-MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
-BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
+import os
+MONO = "consola.ttf" if os.name == 'nt' else "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+BOLD = "consolab.ttf" if os.name == 'nt' else "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
 _F = {}
 
 
@@ -94,7 +95,7 @@ class Hud:
         dr.rectangle([x0, y, x0 + iw, y + dh], outline=LINE)
         t = scene["target"]
         if t["visible"]:                                   # lock reticle
-            cx = x0 + iw * (0.5 - np.tan(np.deg2rad(t["bearing_deg"])) / (2 * tel["tan_h"]))
+            cx = x0 + iw * (0.5 - np.tan(t["bearing_rad"]) / (2 * tel["tan_h"]))
             cy = y + dh * 0.52
             dr.rectangle([cx - 13, cy - 13, cx + 13, cy + 13], outline=GREEN, width=2)
             dr.text((cx + 18, cy - 7), f"{t['range_m']:.1f}m", font=font(12, True), fill=GREEN)
@@ -104,28 +105,18 @@ class Hud:
         dr.text((x0, y), "FREE SPACE BY SECTOR", font=font(11, True), fill=CYAN)
         y += 18
         secs = scene["sector_range_m"]
+        names = ["far_left", "left", "center", "right", "far_right"]
+        if isinstance(secs, dict):
+            names, secs = list(secs.keys()), list(secs.values())
+            
         step = 15 if len(secs) <= 5 else 12
-        for name, rng in secs.items():
+        for name, rng in zip(names, secs):
             col = RED if rng < 4.0 else (ACCENT if rng < 10.0 else CYAN)
             dr.text((x0, y), name.replace("_", " ")[:11].ljust(11), font=font(10), fill=DIM)
             self._bar(dr, x0 + 84, y + 2, w - 136, 7, rng / 30.0, col)
             dr.text((x0 + w - 44, y), f"{min(rng,99):5.1f}", font=font(10), fill=TEXT)
             y += step
-        # --- vertical free space: what decides over / under / around ----------
-        y += 8
-        dr.text((x0, y), "FREE SPACE AHEAD, STACKED", font=font(11, True), fill=CYAN)
-        y += 16
-        for lbl, key in (("if we climb", "free_ahead_above_m"),
-                         ("straight on", "free_ahead_level_m"),
-                         ("if we dive", "free_ahead_below_m")):
-            v = scene.get(key)
-            if v is None:
-                continue
-            col = RED if v < 5.0 else (ACCENT if v < 12.0 else GREEN)
-            dr.text((x0, y), lbl.ljust(11), font=font(10), fill=DIM)
-            self._bar(dr, x0 + 84, y + 2, w - 136, 7, v / 30.0, col)
-            dr.text((x0 + w - 44, y), f"{v:5.1f}", font=font(10), fill=TEXT)
-            y += 14
+        
         y += 18
         dr.line([x0, y, x0 + w, y], fill=LINE)
 
@@ -155,7 +146,7 @@ class Hud:
                 y += 34
             y += 4
         probs = judg.get("probabilities") or {}
-        order = [k for k in ("hold_course", "gap_left", "gap_right", "climb", "dive",
+        order = [k for k in ("hold_course", "steer_left", "steer_right",
                              "brake", "reacquire") if k in probs]
         for k in order:
             p = probs.get(k, 0.0)
