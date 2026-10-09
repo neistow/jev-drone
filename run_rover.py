@@ -62,6 +62,7 @@ class Guidance:
         self.tgt_t = 0.0
         self.commit = None
         self.commit_left = 0
+        self.override_left = 0
 
     def _search_heading(self, yaw, t, pos):
         if self.tgt_w is None or pos is None:
@@ -119,12 +120,21 @@ class Guidance:
                     if judg.get("maneuver") != self.commit and judg.get("risk", 0) > THRESHOLDS.get("override_risk", 1.7):
                         self.commit = judg["maneuver"]
                         mv = self.commit
+                
+                # Latch the reflex override for 1 second (15 ticks) to carry momentum through the obstacle
+                if judg.get("override_safety_reflex", 0) > 0.5:
+                    self.override_left = 15
+                else:
+                    self.override_left = max(0, self.override_left - 1)
+                    
                 acted = 1
             else:
                 self.commit = None
                 self.commit_left = 0
+                self.override_left = max(0, self.override_left - 1)
                 mv = "brake"
         else:
+            self.override_left = max(0, self.override_left - 1)
             mv = "brake" 
 
         if mv == "hold_course":
@@ -168,7 +178,7 @@ class Guidance:
         near_fatal = min(fatal_ranges)
         
         # JEV can explicitly override the safety reflex for things like cardboard
-        if judg and judg.get("override_safety_reflex", 0) > 0.5:
+        if self.override_left > 0:
             near_fatal = 25.0
             fatal_ranges = [25.0] * 5
 
