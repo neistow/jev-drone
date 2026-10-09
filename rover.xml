@@ -28,8 +28,25 @@
     <body name="chaser" pos="0 0 0.2">
       <freejoint name="chaser_root"/>
       <site name="chaser_root_site" pos="0 0 0"/>
-      <!-- Chassis -->
-      <geom name="chaser_chassis" type="mesh" mesh="chassis_mesh" pos="0 0 0" material="car_body"/>
+      <!-- Collision Chassis -->
+      <geom name="chaser_collision" type="box" size="0.35 0.18 0.05" pos="0 0 0" rgba="0 0 0 0"/>
+      
+      <!-- Visuals (no collision, no mass) -->
+      <geom name="vis_base" type="box" size="0.35 0.18 0.05" pos="0 0 0" material="car_body" contype="0" conaffinity="0" mass="0"/>
+      <geom name="vis_cabin" type="box" size="0.15 0.12 0.06" pos="-0.05 0 0.11" material="car_cabin" contype="0" conaffinity="0" mass="0"/>
+      <geom name="vis_nose" type="box" size="0.05 0.12 0.03" pos="0.40 0 -0.02" material="car_cabin" contype="0" conaffinity="0" mass="0"/>
+      
+      <!-- Headlights -->
+      <geom name="vis_hl_L" type="cylinder" size="0.02 0.01" pos="0.45 0.08 0.0" euler="0 90 0" rgba="0.9 0.9 0.5 1" contype="0" conaffinity="0" mass="0"/>
+      <geom name="vis_hl_R" type="cylinder" size="0.02 0.01" pos="0.45 -0.08 0.0" euler="0 90 0" rgba="0.9 0.9 0.5 1" contype="0" conaffinity="0" mass="0"/>
+      
+      <!-- Rear Spoiler -->
+      <geom name="vis_spoiler_strut_L" type="cylinder" size="0.008 0.04" pos="-0.30 0.12 0.09" material="car_cabin" contype="0" conaffinity="0" mass="0"/>
+      <geom name="vis_spoiler_strut_R" type="cylinder" size="0.008 0.04" pos="-0.30 -0.12 0.09" material="car_cabin" contype="0" conaffinity="0" mass="0"/>
+      <geom name="vis_spoiler_wing" type="box" size="0.04 0.16 0.01" pos="-0.32 0 0.14" material="car_body" contype="0" conaffinity="0" mass="0"/>
+      
+      <!-- Camera Mast -->
+      <geom name="vis_mast" type="cylinder" size="0.01 0.05" pos="0.30 0 0.08" material="car_cabin" contype="0" conaffinity="0" mass="0"/>
       
       <!-- Forward Camera -->
       <camera name="chaser_camera" pos="0.35 0 0.15" zaxis="1 0 0" fovy="91" resolution="800 600"/>
