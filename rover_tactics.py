@@ -22,7 +22,7 @@ THRESHOLDS = {
     "call_budget": 160,       # hard cap per episode, never burn credits (API SAFETY)
     "consult_within_m": 4.0,  # only ask when something is actually in the way...
     "consult_lost_s": 1.0,    # ...or the target has been missing this long
-    "commit_steps": 55,       # ~1.4s at 50Hz: commit to a maneuver
+    "commit_steps": 20,       # ~0.5s at 40Hz: commit to a maneuver
     "override_risk": 1.7,     # ...unless things get this dangerous
     "really_lost": 0.5,       # Noul above which we stop trusting the remembered bearing
 }

@@ -79,7 +79,7 @@ class Guidance:
             mv = judg["maneuver"]
             if self.commit is None or self.commit_left <= 0:
                 self.commit = mv
-                self.commit_left = 32
+                self.commit_left = 20
             else:
                 mv = self.commit
                 self.commit_left -= 1
