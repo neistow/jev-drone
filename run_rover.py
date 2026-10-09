@@ -74,19 +74,24 @@ class Guidance:
         fwd = SEARCH_SPEED
         absolute_yaw = None
 
+        from rover_tactics import THRESHOLDS
         mv = None
         if use_jev and judg and judg.get("maneuver"):
-            mv = judg["maneuver"]
-            if self.commit is None or self.commit_left <= 0:
-                self.commit = mv
-                self.commit_left = 20
-            else:
-                mv = self.commit
-                self.commit_left -= 1
-                if judg.get("maneuver") != self.commit and judg.get("risk", 0) > 1.7:
-                    self.commit = judg["maneuver"]
+            if judg.get("age_s", 0.0) <= THRESHOLDS["stale_after_s"]:
+                mv = judg["maneuver"]
+                if self.commit is None or self.commit_left <= 0:
+                    self.commit = mv
+                    self.commit_left = THRESHOLDS["commit_steps"]
+                else:
                     mv = self.commit
-            acted = 1
+                    self.commit_left -= 1
+                    if judg.get("maneuver") != self.commit and judg.get("risk", 0) > THRESHOLDS.get("override_risk", 1.7):
+                        self.commit = judg["maneuver"]
+                        mv = self.commit
+                acted = 1
+            else:
+                self.commit = None
+                self.commit_left = 0
 
         if mv == "hold_course":
             rng = STANDOFF + 1.5

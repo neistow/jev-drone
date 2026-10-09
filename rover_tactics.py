@@ -22,7 +22,7 @@ THRESHOLDS = {
     "call_budget": 160,       # hard cap per episode, never burn credits (API SAFETY)
     "consult_within_m": 4.0,  # only ask when something is actually in the way...
     "consult_lost_s": 1.0,    # ...or the target has been missing this long
-    "commit_steps": 20,       # ~0.5s at 40Hz: commit to a maneuver
+    "commit_steps": 6,        # ~0.5s at 12.5Hz: commit to a maneuver
     "override_risk": 1.7,     # ...unless things get this dangerous
     "really_lost": 0.5,       # Noul above which we stop trusting the remembered bearing
 }
@@ -41,7 +41,8 @@ MISSION = ("Follow the target rover and keep it in view. Do not hit anything. "
 MANEUVERS = {
     "hold_course": (
         "Either the path ahead is completely clear, or the objects ahead have high clearance (>0.4m) "
-        "allowing the rover to drive right under them. Keep driving straight at the target."),
+        "allowing the rover to drive right under them. Keep driving straight at the target. "
+        "Also use this when waiting for a moving obstacle to clear your path."),
     "steer_left": (
         "A low-clearance obstacle blocks the way ahead, and the left sectors show clearly more free "
         "space (or higher clearance) than the right. Steer around it to the left."),
@@ -49,7 +50,8 @@ MANEUVERS = {
         "A low-clearance obstacle blocks the way ahead, and the right sectors show clearly more free "
         "space (or higher clearance) than the left. Steer around it to the right."),
     "brake": (
-        "Close to a low-clearance obstacle on several sides and no option is clearly better. Bleed off "
+        "Close to a low-clearance obstacle on several sides and no option is clearly better, or waiting "
+        "for a dynamic/moving obstacle (like a sliding wall) to move out of the way. Bleed off "
         "speed and hold until the picture improves."),
     "reverse": (
         "Blocked in front by a low-clearance obstacle and too close to turn safely. Back up to create space."
