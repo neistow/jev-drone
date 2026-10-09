@@ -81,6 +81,11 @@ QUESTIONS = {
         criteria={"true": "Give up the remembered bearing and sweep to search.",
                   "false": "Keep flying the last known bearing; it should reappear."},
     ),
+    "override_safety_reflex": Noul(
+        instructions="Should the rover suppress its low-level safety braking reflex? Only do this if you know the obstacle is harmless (like cardboard) and you intend to smash through it.",
+        criteria={"true": "Suppress the safety reflex and ram the obstacle.",
+                  "false": "Leave safety reflex enabled. Braking will occur if getting too close."},
+    ),
 }
 
 
@@ -97,7 +102,8 @@ def build_state(scene):
 
 
 DEFAULT = {"maneuver": "hold_course", "risk": 0.0, "confidence": 0.0,
-           "target_truly_lost": 0.0, "source": "default", "age_s": 0.0,
+           "target_truly_lost": 0.0, "override_safety_reflex": 0.0, 
+           "source": "default", "age_s": 0.0,
            "probabilities": {}}
 
 
@@ -186,6 +192,7 @@ class Tactician:
                     "probabilities": {k: round(v, 3) for k, v in a["maneuver"].probabilities.items()},
                     "risk": round(a["risk"].score, 2),
                     "target_truly_lost": round(a["target_truly_lost"].noul, 3),
+                    "override_safety_reflex": round(a["override_safety_reflex"].noul, 3),
                     "source": "jev",
                 }
                 self.tokens += r.usage.input_tokens + r.usage.output_tokens

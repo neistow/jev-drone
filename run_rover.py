@@ -167,8 +167,8 @@ class Guidance:
         fatal_ranges = [sec[i] if scene["sector_clearance_m"][i] < 0.4 else 25.0 for i in range(5)]
         near_fatal = min(fatal_ranges)
         
-        # JEV knows we can smash cardboard, so don't brake for it
-        if scene.get("nearest_obstacle_type") == "cardboard":
+        # JEV can explicitly override the safety reflex for things like cardboard
+        if judg and judg.get("override_safety_reflex", 0) > 0.5:
             near_fatal = 25.0
             fatal_ranges = [25.0] * 5
 
@@ -273,6 +273,7 @@ def main():
                     "risk": 1.0,
                     "confidence": 1.0,
                     "target_truly_lost": 0.0,
+                    "override_safety_reflex": 0.0,
                     "source": "heuristic",
                     "age_s": 0.0,
                     "probabilities": {}
