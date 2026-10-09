@@ -117,14 +117,15 @@ class Guidance:
             absolute_yaw = self.yaw_sp
 
         # Reflex
-        near = scene["nearest_obstacle_m"]
-        if near < 1.3:
+        fatal_ranges = [sec[i] if scene["sector_clearance_m"][i] < 0.4 else 25.0 for i in range(5)]
+        near_fatal = min(fatal_ranges)
+        if near_fatal < 1.3:
             reflex = 1
             absolute_yaw = None  # Reflex overrides guidance
             fwd = min(fwd, 0.25)
-            if sec[2] < 1.3:
+            if fatal_ranges[2] < 1.3:
                 fwd = -0.8
-                turn_bias = 0.5 if sec[1] > sec[3] else -0.5
+                turn_bias = 0.5 if fatal_ranges[1] > fatal_ranges[3] else -0.5
 
         if fresh:
             self.yaw_sp = absolute_yaw if absolute_yaw is not None else yaw + turn_bias
@@ -143,7 +144,7 @@ def main():
     d = mujoco.MjData(m)
     
     pilot = Pilot(m)
-    eye = Eye(m, shell=("overpass_top",))
+    eye = Eye(m)
     guide = Guidance(eye)
 
     use_jev = not args.no_jev

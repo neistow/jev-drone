@@ -144,17 +144,43 @@ class Eye:
         mask &= ~np.isin(seg, self.self_geoms)
         mask &= ~np.isin(seg, self.target_ids)
 
+        # Calculate Z world of each pixel
+        tan_v = np.tan(np.deg2rad(self.EYE_FOVY) / 2)
+        ny = 1.0 - 2.0 * np.arange(self.H) / self.H
+        NY = np.tile(ny[:, None], (1, self.W))
+        pz_cam = d * NY * tan_v
+        tilt = np.deg2rad(self.TILT_DEG)
+        Z_cam_world = pos_cam[2]
+        pz_world = Z_cam_world + d * np.sin(tilt) + pz_cam * np.cos(tilt)
+
         # Apply sec_scale correction so off-axis objects don't appear deceptively close
         bearings = self._pixel_to_bearing(np.arange(self.W))
         sec_scale = 1.0 / np.cos(bearings)
-        d = d * sec_scale[None, :]
+        d_radial = d * sec_scale[None, :]
 
-        d_threats = np.where(mask, d, self.MAX_RANGE)
-        d_tgt = np.where(np.isin(seg, self.target_ids), d, self.MAX_RANGE)
+        d_threats = np.where(mask, d_radial, self.MAX_RANGE)
+        d_tgt = np.where(np.isin(seg, self.target_ids), d_radial, self.MAX_RANGE)
         min_tgt = float(d_tgt.min())
 
-        sectors = np.array_split(d_threats, self.N_SECTORS, axis=1)
-        r = [float(s.min()) for s in sectors]
+        sectors_d = np.array_split(d_threats, self.N_SECTORS, axis=1)
+        sectors_z = np.array_split(pz_world, self.N_SECTORS, axis=1)
+        sectors_m = np.array_split(mask, self.N_SECTORS, axis=1)
+        
+        r = []
+        c = []
+        for i in range(self.N_SECTORS):
+            sm = sectors_m[i]
+            sd = sectors_d[i]
+            sz = sectors_z[i]
+            if not np.any(sm):
+                r.append(self.MAX_RANGE)
+                c.append(25.0)
+            else:
+                d_min = sd[sm].min()
+                r.append(float(d_min))
+                # clearance is the min Z of obstacles within 1m of the closest obstacle
+                close_mask = sm & (sd < d_min + 1.0)
+                c.append(float(sz[close_mask].min()))
 
         cx = self.W / 2
         bearing = None
@@ -170,7 +196,8 @@ class Eye:
 
         return {
             "sector_range_m": r,
-            "sectors_blocked": sum(1 for x in r if x < 2.5),
+            "sector_clearance_m": c,
+            "sectors_blocked": sum(1 for d in r if d < 2.5),
             "nearest_obstacle_m": min(r),
             "target": {
                 "visible": bearing is not None,

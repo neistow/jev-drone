@@ -31,7 +31,8 @@ THRESHOLDS = {
 ROVER = {
     "type": "differential drive rover (car), camera-only, no map and no GPS",
     "top_speed_mps": 3.6,
-    "note": "All distances are from a forward camera. 25 m means nothing was detected.",
+    "height_m": 0.35,
+    "note": "All distances are from a forward camera. 'sector_range_m' is distance to the closest object in each sector. 'sector_clearance_m' is the height of that object's lowest point above the ground. If an object has a clearance > 0.4m (e.g. a high ceiling), the rover can safely drive UNDER it.",
 }
 
 MISSION = ("Follow the target rover and keep it in view. Do not hit anything. "
@@ -39,19 +40,19 @@ MISSION = ("Follow the target rover and keep it in view. Do not hit anything. "
 
 MANEUVERS = {
     "hold_course": (
-        "Nothing meaningfully blocks the pursuit line: the path ahead is clear for "
-        "several metres. Keep driving straight at the target."),
+        "Either the path ahead is completely clear, or the objects ahead have high clearance (>0.4m) "
+        "allowing the rover to drive right under them. Keep driving straight at the target."),
     "steer_left": (
-        "Something blocks the way ahead, and the left sectors show clearly more free "
-        "space than the right. Steer around it to the left."),
+        "A low-clearance obstacle blocks the way ahead, and the left sectors show clearly more free "
+        "space (or higher clearance) than the right. Steer around it to the left."),
     "steer_right": (
-        "Something blocks the way ahead, and the right sectors show clearly more free "
-        "space than the left. Steer around it to the right."),
+        "A low-clearance obstacle blocks the way ahead, and the right sectors show clearly more free "
+        "space (or higher clearance) than the left. Steer around it to the right."),
     "brake": (
-        "Close to something on several sides and no option is clearly better. Bleed off "
+        "Close to a low-clearance obstacle on several sides and no option is clearly better. Bleed off "
         "speed and hold until the picture improves."),
     "reverse": (
-        "Blocked in front and too close to turn safely. Back up to create space."
+        "Blocked in front by a low-clearance obstacle and too close to turn safely. Back up to create space."
     ),
     "reacquire": (
         "The target has been out of sight long enough that the remembered bearing is "
@@ -68,7 +69,7 @@ QUESTIONS = {
         criteria=MANEUVERS,
     ),
     "risk": Score(
-        instructions="How dangerous is the rover's immediate situation?",
+        instructions="How dangerous is the rover's immediate situation? NOTE: Objects with >0.4m clearance pose NO RISK because the rover will pass underneath them.",
         criteria=["clear and open", "tight but manageable", "about to hit something"],
     ),
     "target_truly_lost": Noul(
@@ -139,6 +140,7 @@ class Tactician:
         return (
             scene["sectors_blocked"],
             tuple(min(int(v / 1.5), 6) for v in scene["sector_range_m"]),
+            tuple(min(int(v / 0.5), 4) for v in scene.get("sector_clearance_m", [])),
             min(int(scene["nearest_obstacle_m"] / 1.5), 6),
             t["visible"],
             None if not t["visible"] else int(np.rad2deg(t["bearing_rad"]) / 15),
