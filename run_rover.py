@@ -26,6 +26,32 @@ def drive_course(m, d, t):
         p[1] = c + off
         d.mocap_pos[mid] = p
 
+
+def baseline_heuristic(scene):
+    """A plain 2D heuristic that ignores vertical clearance. 
+    It will navigate pillars but get completely stuck at the overpass."""
+    sec = scene["sector_range_m"]
+    
+    if scene["target"]["unseen_for_s"] > 1.0:
+        return "reacquire"
+        
+    if min(sec) < 4.0:
+        left_room = min(sec[0], sec[1])
+        right_room = min(sec[3], sec[4])
+        
+        # If the ceiling of the overpass is detected, all ranges drop below 3m.
+        # A simple heuristic thinks it's a solid wall and brakes.
+        if max(sec) < 2.5:
+            return "brake"
+            
+        if sec[2] < 3.5:
+            return "steer_left" if left_room > right_room else "steer_right"
+        else:
+            if left_room < 1.5: return "steer_right"
+            if right_room < 1.5: return "steer_left"
+            
+    return "hold_course"
+
 class Guidance:
     def __init__(self, eye):
         self.eye = eye
@@ -82,7 +108,7 @@ class Guidance:
 
         from rover_tactics import THRESHOLDS
         mv = None
-        if use_jev and judg and judg.get("maneuver"):
+        if judg and judg.get("maneuver"):
             if judg.get("age_s", 0.0) <= THRESHOLDS["stale_after_s"]:
                 mv = judg["maneuver"]
                 if self.commit is None or self.commit_left <= 0:
@@ -99,8 +125,6 @@ class Guidance:
                 self.commit = None
                 self.commit_left = 0
                 mv = "brake"
-        elif not use_jev:
-            mv = judg.get("maneuver", "hold_course") if judg else "hold_course"
         else:
             mv = "brake" 
 
@@ -238,6 +262,16 @@ def main():
                     judg = j
                     if not decision_needed(scene):
                         judg["age_s"] = 0.0
+            else:
+                judg = {
+                    "maneuver": baseline_heuristic(scene),
+                    "risk": 1.0,
+                    "confidence": 1.0,
+                    "target_truly_lost": 0.0,
+                    "source": "heuristic",
+                    "age_s": 0.0,
+                    "probabilities": {}
+                }
             v_des, yaw_cmd, acted, reflex = guide(scene, judg, yaw, use_jev, fresh, t, pos)
             
             if args.log:
