@@ -47,27 +47,9 @@ class Hud:
         if frac > 0:
             dr.rectangle([x, y, x + max(2, int(w * min(frac, 1.0))), y + h], fill=col)
 
-    def _lock_on(self, img):
-        """The chase camera looks AT the aircraft, so it is always dead centre.
-        Ring + corner brackets so a 30 cm quadrotor reads at a glance."""
-        cx, cy = self.vw // 2, (self.vh - 54) // 2
-        glow = Image.new("RGBA", (self.vw, self.vh), (0, 0, 0, 0))
-        gd = ImageDraw.Draw(glow)
-        for rad, a in ((84, 22), (74, 38), (64, 60), (55, 95)):
-            gd.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], outline=ACCENT + (a,), width=4)
-        s, g = 54, 19
-        for sx in (-1, 1):
-            for sy in (-1, 1):
-                x, y = cx + sx * s, cy + sy * s
-                gd.line([x, y, x - sx * g, y], fill=ACCENT + (255,), width=3)
-                gd.line([x, y, x, y - sy * g], fill=ACCENT + (255,), width=3)
-        img.alpha_composite(glow)
-        return img
-
     def draw(self, view, depth, scene, judg, tel):
         img = Image.new("RGBA", (self.W, self.H), BG + (255,))
         img.paste(Image.fromarray(view).convert("RGBA"), (0, 0))
-        img = self._lock_on(img)
         dr = ImageDraw.Draw(img)
         px = self.vw
         dr.rectangle([px, 0, self.W, self.H], fill=PANEL)
