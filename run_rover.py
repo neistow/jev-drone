@@ -63,7 +63,8 @@ class Guidance:
 
         if tgt["visible"] and fresh and pos is not None:
             c, s = np.cos(yaw + tgt["bearing_rad"]), np.sin(yaw + tgt["bearing_rad"])
-            w = pos[:2] + tgt["range_m"] * np.array([c, s])
+            pos_cam_2d = pos[:2] + 0.35 * np.array([np.cos(yaw), np.sin(yaw)])
+            w = pos_cam_2d + tgt["range_m"] * np.array([c, s])
             if self.tgt_w is not None and t > self.tgt_t:
                 dt_ = t - self.tgt_t
                 v = (w - self.tgt_w) / dt_
@@ -97,13 +98,20 @@ class Guidance:
             else:
                 self.commit = None
                 self.commit_left = 0
+                mv = "brake"
+        elif not use_jev:
+            mv = judg.get("maneuver", "hold_course") if judg else "hold_course"
+        else:
+            mv = "brake" 
 
         if mv == "hold_course":
             rng = STANDOFF + 1.5
             if tgt["visible"]:
                 absolute_yaw = yaw + tgt["bearing_rad"]
-                if tgt["range_m"] < rng:
-                    fwd = ROVER_SPEED * (tgt["range_m"] / rng)
+                if tgt["range_m"] < STANDOFF:
+                    fwd = ROVER_SPEED * (tgt["range_m"] / STANDOFF)
+                elif tgt["range_m"] < rng:
+                    fwd = np.interp(tgt["range_m"], [STANDOFF, rng], [ROVER_SPEED, SEARCH_SPEED])
             else:
                 absolute_yaw = self._search_heading(yaw, t, pos)
         elif mv == "steer_left":
@@ -228,6 +236,8 @@ def main():
                 j = tactician.read(t)
                 if j:
                     judg = j
+                    if not decision_needed(scene):
+                        judg["age_s"] = 0.0
             v_des, yaw_cmd, acted, reflex = guide(scene, judg, yaw, use_jev, fresh, t, pos)
             
             if args.log:

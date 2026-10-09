@@ -89,7 +89,6 @@ def decision_needed(scene):
     """Code decides WHEN there is a judgment worth paying for. On an empty corridor
     with the target in view there is nothing to decide, so we do not ask."""
     return (scene["nearest_obstacle_m"] < THRESHOLDS["consult_within_m"]
-            or scene["sectors_blocked"] >= 1
             or (scene["target"]["unseen_for_s"] or 0.0) >= THRESHOLDS["consult_lost_s"])
 
 

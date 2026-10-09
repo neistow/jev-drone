@@ -86,9 +86,8 @@ class Eye:
     IGNORE_BELOW_M = 0.3
     EYE_FOVY = 60.0
 
-    def __init__(self, model, target_body="rover", ignore_below=IGNORE_BELOW_DEFAULT,
+    def __init__(self, model, target_body="rover",
                  floor_geom="floor", shell=(), walls=()):
-        self.ignore_below = ignore_below
         self.shell_ids = np.array([model.geom(n).id for n in shell], dtype=int)
         self.wall_ids = [model.geom(n).id for n in walls]
         self.m = model
