@@ -10,15 +10,16 @@ reflex layer in run.py owns safety regardless of what comes back.
 """
 import os, threading, queue, time
 from typesafe_sdk import TypeSafeClient, Choice, Noul, Score
+from api_adapter import SystemOneAdapter
 
-MODEL = "jev-latest"
+MODEL = os.environ.get("JEV_MODEL", "jev-latest")
 
 # --- how the flight code reacts to a judgment -------------------------------
 THRESHOLDS = {
     "stale_after_s": 1.5,     # ignore a judgment older than this; the world moved on
     "risk_slow_down": 1.45,   # score above which we bleed speed regardless of maneuver
     "call_hz": 3.0,           # upper bound on how often we ask
-    "call_budget": 160,      # hard cap per episode, so a bug cannot run up a bill
+    "call_budget": 512,      # hard cap per episode, so a bug cannot run up a bill
     "consult_within_m": 4.0,  # only ask when something is actually in the way...
     "consult_lost_s": 1.0,    # ...or the target has been missing this long
     "climb_steps": 150,       # ~3s: long enough to rise AND cross, not just bob up
@@ -110,14 +111,11 @@ class Tactician:
     """Asks Jev for a judgment at most `hz` times a second, and only when the
     scene has actually changed enough to be worth a call."""
 
-    def __init__(self, hz=THRESHOLDS["call_hz"], budget=THRESHOLDS["call_budget"], model=MODEL):
-        key = os.environ.get("TYPESAFE_API_KEY") or os.environ.get("JEV_API_KEY")
-        if not key:
-            raise RuntimeError("set TYPESAFE_API_KEY (see .env.example)")
-        self.client = TypeSafeClient(api_key=key)
+    def __init__(self, hz=THRESHOLDS["call_hz"], budget=THRESHOLDS["call_budget"], model=None):
+        self.client = SystemOneAdapter(model=model or MODEL)
+        self.model = self.client.model
         self.min_dt = 1.0 / hz
         self.budget = budget
-        self.model = model
         self.calls = 0
         self.attempts = 0
         self.skipped = 0
@@ -159,7 +157,8 @@ class Tactician:
             self.n_ratelimited += 1
             return
         key = self._key(scene)
-        if key == self._last_key:
+        is_stale = (now - self._stamp) > THRESHOLDS["stale_after_s"]
+        if key == self._last_key and not is_stale:
             self.skipped += 1
             return
         try:
@@ -185,6 +184,13 @@ class Tactician:
             try:
                 r = self.client.system_one(state=build_state(scene), model=self.model, questions=QUESTIONS)
                 a = r.answers
+                q_log = {}
+                for k, v in QUESTIONS.items():
+                    q_log[k] = {
+                        "instructions": getattr(v, "instructions", str(v)),
+                        "criteria": getattr(v, "criteria", None)
+                    }
+                    
                 judgment = {
                     "maneuver": a["maneuver"].choice,
                     "confidence": round(a["maneuver"].confidence, 3),
@@ -192,6 +198,30 @@ class Tactician:
                     "risk": round(a["risk"].score, 2),
                     "target_truly_lost": round(a["target_truly_lost"].noul, 3),
                     "source": "jev",
+                    "_prompt": {
+                        "state": build_state(scene),
+                        "questions": q_log
+                    },
+                    "_response": {
+                        "maneuver": {
+                            "choice": getattr(a["maneuver"], "choice", None),
+                            "score": getattr(a["maneuver"], "score", None),
+                            "noul": getattr(a["maneuver"], "noul", None),
+                            "confidence": getattr(a["maneuver"], "confidence", None)
+                        },
+                        "risk": {
+                            "choice": getattr(a["risk"], "choice", None),
+                            "score": getattr(a["risk"], "score", None),
+                            "noul": getattr(a["risk"], "noul", None),
+                            "confidence": getattr(a["risk"], "confidence", None)
+                        },
+                        "target_truly_lost": {
+                            "choice": getattr(a["target_truly_lost"], "choice", None),
+                            "score": getattr(a["target_truly_lost"], "score", None),
+                            "noul": getattr(a["target_truly_lost"], "noul", None),
+                            "confidence": getattr(a["target_truly_lost"], "confidence", None)
+                        }
+                    }
                 }
                 self.tokens += r.usage.input_tokens + r.usage.output_tokens
                 self.calls += 1

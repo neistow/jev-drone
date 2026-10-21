@@ -6,6 +6,11 @@ flies the aircraft (attitude, thrust) and points it at the car; every decision
 about getting past an obstacle is the model's.
 """
 import os, sys, json, time, argparse
+try:
+    import dotenv
+    dotenv.load_dotenv()
+except ImportError:
+    pass
 import numpy as np
 import mujoco
 import flight
@@ -122,7 +127,7 @@ class Nav:
         return v_world, 0.0, mv
 
 
-def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0):
+def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0, model="jev-latest"):
     m = mujoco.MjModel.from_xml_path("tunnel.xml")
     # Racing-quad build: thrust-to-weight ~8 instead of 4. Measured effect on a 2 m
     # lateral dodge is 0.78s -> 0.62s; drag caps lateral speed near 8 m/s, so this
@@ -151,7 +156,7 @@ def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0
                      floor_geom="floor_t", shell=SHELL, threat_fov=30.0, n_sectors=9,
                      walls=("wallL", "wallR"))
     nav = Nav(v_car)
-    tac = TT.FastTactician(workers=workers) if use_jev else None
+    tac = TT.FastTactician(workers=workers, model=model) if use_jev else None
     judg = dict(TT.DEFAULT)
 
     writer = big = hud = cam = None
@@ -231,7 +236,7 @@ def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0
             st = tac.stats() if tac else {}
             tel = {"t": t, "standoff": float(np.linalg.norm(pos - car_pose(t, v_car))),
                    "speed": float(np.linalg.norm(d.qvel[:3])), "hits": hits,
-                   "model": "jev-latest" if tac else "disabled",
+                   "model": tac.model if tac else "disabled",
                    "mode": "JEV NAVIGATING  %.0f m/s" % v_car if tac else "NO JEV",
                    "calls": st.get("calls", 0), "skipped": 0, "tokens": st.get("tokens", 0),
                    "hz": (st.get("calls", 0) / max(t, 1e-6)),
@@ -249,7 +254,7 @@ def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0
         writer.close()
         np.save(video + ".tape.npy", np.array(tape, dtype=object), allow_pickle=True)
     dist = float(d.qpos[0] - (20.0 - STANDOFF))
-    out = {"v_car": v_car, "jev": use_jev, "collisions": hits,
+    out = {"model": tac.model if tac else "baseline", "v_car": v_car, "jev": use_jev, "collisions": hits,
            "distance_m": round(dist, 1),
            "clean_distance_m": round((first_hit_x - (20.0 - STANDOFF)) if first_hit_x else dist, 1),
            "target_visible_pct": round(100 * vis / max(frames, 1), 1),
@@ -267,11 +272,19 @@ def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--speeds", type=float, nargs="+", default=[8.0])
-    p.add_argument("--seconds", type=float, default=40.0)
+    p.add_argument("--seconds", type=float, default=90.0)
     p.add_argument("--no-jev", action="store_true")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--video", default=None)
+    p.add_argument("--model", type=str, default=os.environ.get("JEV_MODEL", "jev-latest"),
+                   help="Model to use (e.g. jev-latest for native, or ~typesafe/jev-latest / provider/model for OpenRouter)")
+    p.add_argument("--provider", choices=["auto", "typesafe", "native", "openrouter"], default="auto",
+                   help="Explicitly force API provider (auto detects from --model)")
     a = p.parse_args()
+    if a.provider == "openrouter":
+        os.environ["USE_OPENROUTER"] = "1"
+    elif a.provider in ("typesafe", "native"):
+        os.environ["USE_OPENROUTER"] = "0"
     for v in a.speeds:
-        r = episode(v, a.seconds, not a.no_jev, a.workers, a.video)
+        r = episode(v, a.seconds, not a.no_jev, a.workers, a.video, model=a.model)
         print(json.dumps(r), flush=True)

@@ -168,8 +168,7 @@ class Eye:
         
         r = []
         c = []
-        closest_geom = None
-        min_overall_d = self.MAX_RANGE
+        sec_geoms = []
         for i in range(self.N_SECTORS):
             sm = sectors_m[i]
             sd = sectors_d[i]
@@ -178,18 +177,36 @@ class Eye:
             if not np.any(sm):
                 r.append(self.MAX_RANGE)
                 c.append(25.0)
+                sec_geoms.append(None)
             else:
-                d_min = sd[sm].min()
-                r.append(float(d_min))
-                # clearance is the min Z of obstacles within 1m of the closest obstacle
-                close_mask = sm & (sd < d_min + 1.0)
+                low_sm = sm & (sz < 0.4)
+                # If a low-clearance (<0.4m) obstacle is within tactical range (4.0m),
+                # measure range, clearance, and object type from the ground-level obstacle
+                # so overhead structures (e.g. overpass roof) do not mask obstacles underneath.
+                if np.any(low_sm) and sd[low_sm].min() < 4.0:
+                    active_m = low_sm
+                else:
+                    active_m = sm
+                d_min = float(sd[active_m].min())
+                r.append(d_min)
+                close_mask = active_m & (sd < d_min + 0.5)
                 c.append(float(sz[close_mask].min()))
-                
-                # identify the closest object's semantic type
-                very_close_mask = sm & (sd < d_min + 0.1)
-                if d_min < min_overall_d and np.any(very_close_mask):
-                    min_overall_d = d_min
-                    closest_geom = sseg[very_close_mask][0]
+
+                very_close_mask = active_m & (sd < d_min + 0.1)
+                sec_geoms.append(int(sseg[very_close_mask][0]) if np.any(very_close_mask) else None)
+
+        closest_geom = None
+        if r[2] < 4.0 and c[2] < 0.4 and sec_geoms[2] is not None:
+            closest_geom = sec_geoms[2]
+        else:
+            candidates = [i for i in (1, 3) if r[i] < 4.0 and c[i] < 0.4 and sec_geoms[i] is not None]
+            if not candidates:
+                candidates = [i for i in range(self.N_SECTORS) if c[i] < 0.4 and sec_geoms[i] is not None]
+            if not candidates:
+                candidates = [i for i in range(self.N_SECTORS) if sec_geoms[i] is not None]
+            if candidates:
+                best_i = min(candidates, key=lambda i: r[i])
+                closest_geom = sec_geoms[best_i]
 
         cx = self.W / 2
         bearing = None

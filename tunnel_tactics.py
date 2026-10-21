@@ -10,8 +10,9 @@ exceed 1/latency, while each individual decision is still 0.135s stale.
 """
 import os, threading, time
 from typesafe_sdk import TypeSafeClient, Choice, Noul, Score
+from api_adapter import SystemOneAdapter
 
-MODEL = "jev-latest"
+MODEL = os.environ.get("JEV_MODEL", "jev-latest")
 
 THRESHOLDS = {
     "workers": 6,          # concurrent in-flight requests
@@ -102,9 +103,9 @@ DEFAULT = {"steer": 2.0, "height": 2.0, "risk": 0.0, "confidence": 0.0,
 
 
 class FastTactician:
-    def __init__(self, workers=None, budget=4000):
-        key = os.environ.get("TYPESAFE_API_KEY") or os.environ.get("JEV_API_KEY")
-        self.client = TypeSafeClient(api_key=key)
+    def __init__(self, workers=None, budget=4000, model=None):
+        self.client = SystemOneAdapter(model=model or MODEL)
+        self.model = self.client.model
         self.n = workers or THRESHOLDS["workers"]
         self.budget = budget
         self.calls = self.errors = self.tokens = 0
@@ -159,7 +160,7 @@ class FastTactician:
             t0 = time.time()
             try:
                 r = self.client.system_one(state=build_state(scene, speed, sw, cr),
-                                           model=MODEL, questions=QUESTIONS)
+                                           model=self.model, questions=QUESTIONS)
                 a = r.answers
                 j = {"steer": float(a["steer"].score),
                      "height": float(a["height"].score),

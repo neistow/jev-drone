@@ -11,18 +11,20 @@ reflex layer in run.py owns safety regardless of what comes back.
 import os, threading, queue, time
 import numpy as np
 from typesafe_sdk import TypeSafeClient, Choice, Noul, Score
+from api_adapter import SystemOneAdapter
 
-MODEL = "jev-latest"
+MODEL = os.environ.get("JEV_MODEL", "jev-latest")
 
 # --- how the rover reacts to a judgment -------------------------------
 THRESHOLDS = {
     "stale_after_s": 1.5,     # ignore a judgment older than this
+    "refresh_after_s": 0.8,   # proactively re-query unchanged scenes before stale_after_s expires
     "risk_slow_down": 1.45,   # score above which we bleed speed
     "call_hz": 3.0,           # upper bound on how often we ask (API SAFETY)
-    "call_budget": 400,       # hard cap per episode, never burn credits (API SAFETY)
+    "call_budget": 512,       # hard cap per episode, never burn credits (API SAFETY)
     "consult_within_m": 4.0,  # only ask when something is actually in the way...
     "consult_lost_s": 1.0,    # ...or the target has been missing this long
-    "commit_steps": 6,        # ~0.5s at 12.5Hz: commit to a maneuver
+    "commit_steps": 10,       # ~0.8s at 12.5Hz: commit long enough to clear a pillar corner
     "override_risk": 1.7,     # ...unless things get this dangerous
     "really_lost": 0.5,       # Noul above which we stop trusting the remembered bearing
 }
@@ -70,7 +72,7 @@ QUESTIONS = {
         criteria=MANEUVERS,
     ),
     "risk": Score(
-        instructions="How dangerous is the rover's immediate situation? NOTE: Objects with >0.4m clearance pose NO RISK because the rover will pass underneath them.",
+        instructions="How dangerous is the rover's immediate situation? NOTE: Objects with >0.4m clearance pose NO RISK because the rover will pass underneath them, and 'cardboard' obstacles pose NO RISK because the rover can safely smash through them.",
         criteria=["clear and open", "tight but manageable", "about to hit something"],
     ),
     "target_truly_lost": Noul(
@@ -111,14 +113,11 @@ class Tactician:
     """Asks Jev for a judgment at most `hz` times a second, and only when the
     scene has actually changed enough to be worth a call."""
 
-    def __init__(self, hz=THRESHOLDS["call_hz"], budget=THRESHOLDS["call_budget"], model=MODEL):
-        key = os.environ.get("TYPESAFE_API_KEY") or os.environ.get("JEV_API_KEY")
-        if not key:
-            raise RuntimeError("set TYPESAFE_API_KEY (see .env.example)")
-        self.client = TypeSafeClient(api_key=key)
+    def __init__(self, hz=THRESHOLDS["call_hz"], budget=THRESHOLDS["call_budget"], model=None):
+        self.client = SystemOneAdapter(model=model or MODEL)
+        self.model = self.client.model
         self.min_dt = 1.0 / hz
         self.budget = budget
-        self.model = model
         self.calls = 0
         self.attempts = 0
         self.skipped = 0
@@ -132,9 +131,11 @@ class Tactician:
         self._q = queue.Queue(maxsize=1)
         self._latest = dict(DEFAULT)
         self._stamp = 0.0
+        self._now = 0.0
         self._lock = threading.Lock()
         self._last_sent = float("-inf")
         self._last_key = None
+        self._latest_key = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
@@ -148,6 +149,7 @@ class Tactician:
             tuple(min(int(v / 1.5), 6) for v in scene["sector_range_m"]),
             tuple(min(int(v / 0.5), 4) for v in scene.get("sector_clearance_m", [])),
             min(int(scene["nearest_obstacle_m"] / 1.5), 6),
+            scene.get("nearest_obstacle_type", "solid"),
             t["visible"],
             None if not t["visible"] else int(np.rad2deg(t["bearing_rad"]) / 15),
             (t.get("unseen_for_s") or 0) > 2.0,
@@ -156,31 +158,47 @@ class Tactician:
     def offer(self, scene, now):
         """Non-blocking. Hand the latest scene over if it's worth a call."""
         self.n_offer += 1
+        with self._lock:
+            self._now = max(self._now, now)
+        key = self._key(scene)
+        refresh_after = THRESHOLDS.get("refresh_after_s", 0.8)
+        needs_refresh = (now - self._stamp) > refresh_after
+        if key == self._last_key and not needs_refresh:
+            # The quantized scene is unchanged, so a cached judgment for this exact key
+            # remains valid; keep its stamp from artificially aging out into a stale handoff.
+            with self._lock:
+                if self._latest.get("source") == "jev" and self._latest_key == key:
+                    self._stamp = max(self._stamp, now - 0.5 * refresh_after)
+            self.skipped += 1
+            return
         if self.attempts >= self.budget or now - self._last_sent < self.min_dt:
             self.n_ratelimited += 1
             return
-        key = self._key(scene)
-        if key == self._last_key:
-            self.skipped += 1
-            return
         try:
-            self._q.put_nowait((scene, now))
+            self._q.put_nowait((scene, now, key))
             self._last_sent, self._last_key = now, key
         except queue.Full:
             self.n_full += 1
 
     def read(self, now):
         with self._lock:
+            self._now = max(self._now, now)
             out = dict(self._latest)
-        out["age_s"] = round(now - self._stamp, 2)
+            stamp = self._stamp
+        out["age_s"] = round(max(0.0, now - stamp), 2)
         return out
 
     def _worker(self):
         while not self._stop.is_set():
             try:
-                scene, now = self._q.get(timeout=0.2)
+                item = self._q.get(timeout=0.2)
             except queue.Empty:
                 continue
+            if len(item) == 3:
+                scene, now, key = item
+            else:
+                scene, now = item
+                key = self._key(scene)
             t0 = time.time()
             self.attempts += 1  # counts against the budget whether or not the call succeeds
             try:
@@ -199,16 +217,20 @@ class Tactician:
                 self.calls += 1
                 self.latency.append(time.time() - t0)
                 with self._lock:
-                    self._latest, self._stamp = judgment, now
+                    # Stamp with current simulation time on arrival so network/queue latency
+                    # does not make a brand-new judgment arrive nearly stale.
+                    self._latest = judgment
+                    self._stamp = max(now, self._now)
+                    self._latest_key = key
             except Exception as e:                    # degrade, never crash the flight
                 self.errors += 1
                 self.last_error = f"{type(e).__name__}: {e}"[:160]
-                # A failed call replaces the cached judgment with an error placeholder, so the
-                # next offer() for this same scene must not be skipped as "unchanged" - otherwise
-                # a static scene never gets re-asked and never recovers a real judgment.
+                # Allow immediate re-offer of this scene; if a valid judgment was already
+                # cached, let it age out via _stamp rather than wiping it immediately.
                 self._last_key = None
                 with self._lock:
-                    self._latest = dict(DEFAULT, source=f"error:{type(e).__name__}")
+                    if self._latest.get("source") != "jev":
+                        self._latest = dict(DEFAULT, source=f"error:{type(e).__name__}")
 
     def close(self):
         self._stop.set()

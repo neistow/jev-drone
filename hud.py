@@ -59,9 +59,9 @@ class Hud:
 
         # ---- header ------------------------------------------------------
         y = 26
-        dr.text((x0, y), "JEV", font=font(30, True), fill=ACCENT)
-        dr.text((x0 + 62, y + 10), "SYSTEM ONE", font=font(13, True), fill=TEXT)
-        dr.text((x0 + 62, y + 27), tel["model"], font=font(11), fill=DIM)
+        b_type = tel.get("benchmark_type", "SYSTEM ONE")
+        dr.text((x0, y + 10), b_type, font=font(15, True), fill=ACCENT)
+        dr.text((x0, y + 27), tel["model"], font=font(11), fill=DIM)
         dot = ACCENT if fresh else (70, 55, 30)
         dr.ellipse([self.W - 40, y + 12, self.W - 28, y + 24], fill=dot)
         y += 62
@@ -75,12 +75,13 @@ class Hud:
         dh = int(iw * depth.shape[0] / depth.shape[1])
         img.paste(Image.fromarray(_depth_rgb(depth)).resize((iw, dh), Image.NEAREST), (x0, y))
         dr.rectangle([x0, y, x0 + iw, y + dh], outline=LINE)
-        t = scene["target"]
-        if t["visible"]:                                   # lock reticle
-            cx = x0 + iw * (0.5 - np.tan(t["bearing_rad"]) / (2 * tel["tan_h"]))
+        t = scene.get("target", {})
+        if t.get("visible", False):                        # lock reticle
+            bearing = t.get("bearing_rad", np.deg2rad(t.get("bearing_deg", 0.0)))
+            cx = x0 + iw * (0.5 - np.tan(bearing) / (2 * tel["tan_h"]))
             cy = y + dh * 0.52
             dr.rectangle([cx - 13, cy - 13, cx + 13, cy + 13], outline=GREEN, width=2)
-            dr.text((cx + 18, cy - 7), f"{t['range_m']:.1f}m", font=font(12, True), fill=GREEN)
+            dr.text((cx + 18, cy - 7), f"{t.get('range_m', 0.0):.1f}m", font=font(12, True), fill=GREEN)
         y += dh + 14
 
         # ---- free space --------------------------------------------------
@@ -128,8 +129,16 @@ class Hud:
                 y += 34
             y += 4
         probs = judg.get("probabilities") or {}
-        order = [k for k in ("hold_course", "steer_left", "steer_right",
-                             "brake", "reacquire") if k in probs]
+        is_rover = "ROVER" in tel.get("benchmark_type", "")
+        if is_rover:
+            all_opts = ["hold_course", "steer_left", "steer_right", "brake", "reverse"]
+        else:
+            all_opts = ["hold_course", "steer_left", "steer_right", "gap_left", "gap_right", "climb", "brake", "reacquire"]
+
+        if not probs and "maneuver" in judg:
+            probs = {k: (1.0 if k == judg["maneuver"] else 0.0) for k in all_opts}
+            
+        order = [k for k in all_opts if k in probs]
         for k in order:
             p = probs.get(k, 0.0)
             self.smooth[k] = 0.65 * self.smooth.get(k, 0.0) + 0.35 * p   # ease the bars
@@ -161,9 +170,13 @@ class Hud:
         for i, s in enumerate([
             f"calls {tel['calls']:<4} reused {tel['skipped']}",
             f"latency {tel['lat']}  tokens {tel['tokens']}",
-            f"control 500Hz   jev {tel['hz']:.0f}Hz",
+            f"control 500Hz   model {tel['hz']:.0f}Hz",
         ]):
             dr.text((x0, fy + i * 16), s, font=font(11), fill=DIM)
+        if tel.get("layer"):
+            drv = f"{tel.get('guidance', '')}: {tel['layer']} -> {tel.get('maneuver') or '-'}"
+            dr.text((x0, fy + 48), drv, font=font(11, True),
+                    fill=ACCENT if tel["layer"] == "model" else CYAN)
 
         # ---- mission strip over the render ---------------------------------
         dr.rectangle([0, self.vh - 54, self.vw, self.vh], fill=(8, 10, 13))
@@ -176,7 +189,8 @@ class Hud:
             dr.text((cx, self.vh - 28), v, font=font(15, True),
                     fill=RED if (k == "CONTACTS" and tel["hits"]) else TEXT)
             cx += 150
-        dr.text((self.vw - 330, self.vh - 36), tel["mode"], font=font(14, True),
+        display_mode = f"MODEL: {tel['model']}" if tel['mode'].startswith("JEV") else tel['mode']
+        dr.text((self.vw - 380, self.vh - 36), display_mode, font=font(14, True),
                 fill=ACCENT if tel["mode"].startswith("JEV") else DIM)
         if tel.get("climbing"):
             dr.text((self.vw - 330, self.vh - 52), "CLIMBING OVER BARRIER", font=font(11, True), fill=GREEN)

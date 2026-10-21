@@ -239,7 +239,7 @@ class Guidance:
         return v_world, yaw_cmd, acted, reflex
 
 
-def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None, realtime=True, export=None):
+def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None, realtime=True, export=None, model="jev-latest"):
     rng = np.random.default_rng(seed)
     m = mujoco.MjModel.from_xml_path("world.xml")
     d = mujoco.MjData(m)
@@ -257,7 +257,9 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
     tac = None
     if use_jev:
         from tactics import Tactician, DEFAULT
-        tac = Tactician(**{k: v for k, v in (("hz", hz), ("budget", budget)) if v})
+        kwargs = {k: v for k, v in (("hz", hz), ("budget", budget)) if v}
+        kwargs["model"] = model
+        tac = Tactician(**kwargs)
         judg = dict(DEFAULT)
     else:
         judg = {"maneuver": "hold_course", "risk": 0.0, "confidence": 0.0,
@@ -360,6 +362,7 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
             tel = {"t": t, "standoff": standoffs[-1], "speed": float(np.linalg.norm(d.qvel[:3])),
                    "hits": hits, "model": tac.model if tac else "disabled",
                    "mode": "JEV ENGAGED" if use_jev else "ABLATION: NO JEV",
+                   "benchmark_type": "DRONE BENCHMARK",
                    "calls": tac.calls if tac else 0, "skipped": tac.skipped if tac else 0,
                    "tokens": tac.tokens if tac else 0, "hz": (1.0 / tac.min_dt) if tac else 0,
                    "lat": f"{np.median(tac.latency):.2f}s" if (tac and tac.latency) else "--",
@@ -372,7 +375,7 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
     if writer:
         writer.close()
         np.save(video + ".tape.npy", np.array(tape, dtype=object), allow_pickle=True)
-    out = {"seed": seed, "jev": use_jev, "collisions": hits,
+    out = {"model": tac.model if tac else "baseline", "seed": seed, "jev": use_jev, "collisions": hits,
            "target_visible_pct": round(100 * vis / max(frames, 1), 1),
            "mean_standoff_m": round(float(np.mean(standoffs)), 2),
            "max_standoff_m": round(float(np.max(standoffs)), 2),
@@ -384,16 +387,18 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
     if tac:
         out["jev"] = tac.stats()
         tac.close()
+    import json
     if export:
         with open(export, "w") as f:
             json.dump({"path": path_log, "decisions": decision_log, "summary": out}, f, indent=2)
+    print(json.dumps(out))
     return out
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--seeds", type=int, nargs="+", default=[0])
-    p.add_argument("--seconds", type=float, default=35.0)
+    p.add_argument("--seconds", type=float, default=90.0)
     p.add_argument("--no-jev", action="store_true")
     p.add_argument("--video", default=None)
     p.add_argument("--hz", type=float, default=None)
@@ -401,8 +406,16 @@ if __name__ == "__main__":
     p.add_argument("--fast", action="store_true", help="run faster than real time (unfair to Jev)")
     p.add_argument("--export", type=str, default=None,
                    help="JSON file for the flight path and raw Jev judgments (logging only)")
+    p.add_argument("--model", type=str, default=os.environ.get("JEV_MODEL", "jev-latest"),
+                   help="Model to use (e.g. jev-latest for native, or ~typesafe/jev-latest / provider/model for OpenRouter)")
+    p.add_argument("--provider", choices=["auto", "typesafe", "native", "openrouter"], default="auto",
+                   help="Explicitly force API provider (auto detects from --model)")
     a = p.parse_args()
+    if a.provider == "openrouter":
+        os.environ["USE_OPENROUTER"] = "1"
+    elif a.provider in ("typesafe", "native"):
+        os.environ["USE_OPENROUTER"] = "0"
     for s in a.seeds:
-        r = episode(s, a.seconds, not a.no_jev, a.video, a.hz, a.budget, realtime=not a.fast, export=a.export)
+        r = episode(s, a.seconds, not a.no_jev, a.video, a.hz, a.budget, realtime=not a.fast, export=a.export, model=a.model)
         print(json.dumps(r))
         sys.stdout.flush()
