@@ -160,6 +160,7 @@ class Eye:
 
     W, H = 96, 72            # vertical resolution decides whether a thin sliver of
                              # clearance above an obstacle is seen at all
+    RGB_W, RGB_H = 384, 288  # 4:3 onboard RGB resolution (>=280x280 for Jev, compact <25KB JPEG)
     N_SECTORS = 5
     SECTOR_NAMES = ["far_left", "left", "center", "right", "far_right"]
     SECTOR_NAMES_9 = ["hard_left", "far_left", "left", "inner_left", "center",
@@ -177,8 +178,9 @@ class Eye:
 
     def __init__(self, model, target_body="rover", ignore_below=IGNORE_BELOW_DEFAULT,
                  floor_geom="floor", shell=(), threat_fov=None, n_sectors=None,
-                 walls=()):
+                 walls=(), vision=False):
         self.ignore_below = ignore_below
+        self.vision = bool(vision)
         # The tunnel shell is the environment, not an obstacle. Reported separately
         # as clearances, or it swamps every sector and the scene says nothing.
         # Ceiling and floor are not lateral obstacles: a ceiling 3.6m up shows as
@@ -191,6 +193,7 @@ class Eye:
         self.depth.enable_depth_rendering()
         self.seg = mujoco.Renderer(model, self.H, self.W)
         self.seg.enable_segmentation_rendering()
+        self.rgb = mujoco.Renderer(model, self.RGB_H, self.RGB_W) if self.vision else None
         self.cam = mujoco.MjvCamera()
         self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
         self.cam.distance = 1.0
@@ -350,7 +353,18 @@ class Eye:
                 "nearest_obstacle_m": round(nearest, 2),
                 "nearest_bearing_deg": nearest_brg,
                 "target": target}
+        if self.vision:
+            from api_adapter import encode_image_part
+            out["camera_image"] = encode_image_part(self.render_rgb(data))
         return out
+
+    def render_rgb(self, data):
+        """Render the onboard camera RGB view (uint8 HxWx3) using the current camera pose."""
+        if self.rgb is None:
+            self.rgb = mujoco.Renderer(self.m, self.RGB_H, self.RGB_W)
+        self.m.vis.global_.fovy = self.EYE_FOVY
+        self.rgb.update_scene(data, self.cam)
+        return self.rgb.render()
 
     def _bearing_arr(self, cols):
         ndc = 2.0 * np.asarray(cols, dtype=float) / (self.W - 1) - 1.0

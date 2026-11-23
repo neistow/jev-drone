@@ -100,6 +100,9 @@ def decision_needed(scene):
 
 def build_state(scene):
     """Everything the model is allowed to know, and nothing it cannot observe."""
+    if "camera_image" in scene:
+        obs = {k: v for k, v in scene.items() if k != "camera_image"}
+        return {"mission": MISSION, "rover": ROVER, "observed": obs, "camera_image": scene["camera_image"]}
     return {"mission": MISSION, "rover": ROVER, "observed": scene}
 
 
@@ -119,6 +122,7 @@ class Tactician:
         self.min_dt = 1.0 / hz
         self.budget = budget
         self.calls = 0
+        self.images_sent = 0
         self.attempts = 0
         self.skipped = 0
         self.errors = 0
@@ -202,7 +206,8 @@ class Tactician:
             t0 = time.time()
             self.attempts += 1  # counts against the budget whether or not the call succeeds
             try:
-                r = self.client.system_one(state=build_state(scene), model=self.model, questions=QUESTIONS)
+                state = build_state(scene)
+                r = self.client.system_one(state=state, model=self.model, questions=QUESTIONS)
                 a = r.answers
                 judgment = {
                     "maneuver": a["maneuver"].choice,
@@ -215,6 +220,8 @@ class Tactician:
                 }
                 self.tokens += r.usage.input_tokens + r.usage.output_tokens
                 self.calls += 1
+                if "camera_image" in state:
+                    self.images_sent += 1
                 self.latency.append(time.time() - t0)
                 with self._lock:
                     # Stamp with current simulation time on arrival so network/queue latency
@@ -242,7 +249,7 @@ class Tactician:
 
     def stats(self):
         lat = sorted(self.latency)
-        return {"calls": self.calls, "attempts": self.attempts, "skipped_unchanged": self.skipped, "errors": self.errors,
+        return {"calls": self.calls, "images_sent": self.images_sent, "attempts": self.attempts, "skipped_unchanged": self.skipped, "errors": self.errors,
                 "last_error": self.last_error, "tokens": self.tokens,
                 "offers": self.n_offer, "rate_limited": self.n_ratelimited, "queue_full": self.n_full,
                 "median_latency_s": round(lat[len(lat) // 2], 3) if lat else None,

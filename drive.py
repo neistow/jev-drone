@@ -79,6 +79,7 @@ class Eye:
     """Onboard forward camera -> symbolic scene summary for the rover."""
 
     W, H = 96, 72
+    RGB_W, RGB_H = 384, 288  # 4:3 onboard RGB resolution (>=280x280 for Jev, compact <25KB JPEG)
     N_SECTORS = 5
     SECTOR_NAMES = ["far_left", "left", "center", "right", "far_right"]
     MAX_RANGE = 45.0
@@ -87,14 +88,16 @@ class Eye:
     EYE_FOVY = 60.0
 
     def __init__(self, model, target_body="rover",
-                 floor_geom="floor", shell=(), walls=()):
+                 floor_geom="floor", shell=(), walls=(), vision=False):
         self.shell_ids = np.array([model.geom(n).id for n in shell], dtype=int)
         self.wall_ids = [model.geom(n).id for n in walls]
         self.m = model
+        self.vision = bool(vision)
         self.depth = mujoco.Renderer(model, self.H, self.W)
         self.depth.enable_depth_rendering()
         self.seg = mujoco.Renderer(model, self.H, self.W)
         self.seg.enable_segmentation_rendering()
+        self.rgb = mujoco.Renderer(model, self.RGB_H, self.RGB_W) if self.vision else None
         self.cam = mujoco.MjvCamera()
         self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
         self.cam.distance = 1.0
@@ -220,7 +223,7 @@ class Eye:
         if bearing is None and self.last_seen_t is not None:
             unseen = t - self.last_seen_t
 
-        return {
+        out = {
             "sector_range_m": r,
             "sector_clearance_m": c,
             "sectors_blocked": sum(1 for d in r if d < 2.5),
@@ -233,3 +236,15 @@ class Eye:
                 "unseen_for_s": unseen,
             }
         }
+        if self.vision:
+            from api_adapter import encode_image_part
+            out["camera_image"] = encode_image_part(self.render_rgb(data))
+        return out
+
+    def render_rgb(self, data):
+        """Render the onboard camera RGB view (uint8 HxWx3) using the current camera pose."""
+        if self.rgb is None:
+            self.rgb = mujoco.Renderer(self.m, self.RGB_H, self.RGB_W)
+        self.m.vis.global_.fovy = self.EYE_FOVY
+        self.rgb.update_scene(data, self.cam)
+        return self.rgb.render()

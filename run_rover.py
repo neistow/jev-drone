@@ -8,6 +8,7 @@ import numpy as np
 import mujoco
 from drive import Pilot, Eye
 from rover_tactics import decision_needed, THRESHOLDS
+from api_adapter import strip_image_for_log
 
 ROVER_SPEED = 0.85
 SEARCH_SPEED = 2.4
@@ -382,6 +383,10 @@ def main():
                              "the model as the continuous reactive/fallback layer, with fresh model judgments "
                              "overriding it; 'model-only' is the legacy behaviour (model alone decides, "
                              "stale/missing judgment -> brake). Ignored with --no-jev.")
+    parser.add_argument("--vision", "--send-image", dest="vision", action="store_true",
+                        default=os.environ.get("JEV_VISION", "").lower() in ("1", "true", "yes"),
+                        help="Render onboard camera RGB frames and send them alongside text telemetry to "
+                             "multimodal decision models (can also be enabled via JEV_VISION=1).")
     args = parser.parse_args()
     if args.provider == "openrouter":
         os.environ["USE_OPENROUTER"] = "1"
@@ -391,11 +396,12 @@ def main():
     m = mujoco.MjModel.from_xml_path("rover_world.xml")
     d = mujoco.MjData(m)
     
+    use_jev = not args.no_jev
+    vision_enabled = bool(args.vision and use_jev)
     pilot = Pilot(m)
-    eye = Eye(m)
+    eye = Eye(m, vision=vision_enabled)
     guide = Guidance(eye, mode=args.guidance)
 
-    use_jev = not args.no_jev
     if use_jev:
         from rover_tactics import Tactician
         tactician = Tactician(model=args.model)
@@ -498,7 +504,7 @@ def main():
                     "time": t,
                     "pos": pos.tolist(),
                     "yaw": float(yaw),
-                    "scene": scene,
+                    "scene": strip_image_for_log(scene),
                     "judg": judg,
                     "guide_action": {"v_des": float(v_des), "yaw_cmd": float(yaw_cmd), "acted": acted, "reflex": reflex,
                                      "commit": guide.commit, "commit_left": guide.commit_left,
@@ -542,7 +548,7 @@ def main():
                    "layer": guide.last_layer, "maneuver": guide.last_mv}
             writer.append_data(hud.draw(big.render(), depth, scene, judg, tel))
             tape.append({"qpos": d.qpos.copy().tolist(), "mocap": d.mocap_pos.copy().tolist(),
-                         "depth": depth.astype(np.float16), "scene": scene,
+                         "depth": depth.astype(np.float16), "scene": strip_image_for_log(scene),
                          "judg": judg, "tel": {k: v for k, v in tel.items() if k != "tan_h"}})
             
     if writer:
@@ -555,11 +561,13 @@ def main():
         viewer.close()
 
     summary = {
-        "model": args.model if hasattr(args, 'model') else MODEL if use_jev else "baseline",
+        "model": (args.model if hasattr(args, 'model') else MODEL) if use_jev else "heuristic",
         "jev_enabled": use_jev,
+        "vision": vision_enabled,
         "guidance": args.guidance if use_jev else "heuristic-only",
         "collisions": hits,
         "api_calls": tactician.calls if use_jev else 0,
+        "images_sent": tactician.images_sent if use_jev else 0,
         "distance_travelled": float(np.linalg.norm(pos - start_pos)),
         "forward_progress_m": round(max_x - float(start_pos[0]), 2),
         "max_x": round(max_x, 2),

@@ -15,6 +15,7 @@ import numpy as np
 import mujoco
 import flight
 import tunnel_tactics as TT
+from api_adapter import strip_image_for_log
 
 SHELL = ("ceil_t", "floor_t")
 CRUISE_ALT = 3.3     # blocked by BOTH the hanging baffles and the standing blocks
@@ -127,7 +128,7 @@ class Nav:
         return v_world, 0.0, mv
 
 
-def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0, model="jev-latest"):
+def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0, model="jev-latest", vision=False):
     m = mujoco.MjModel.from_xml_path("tunnel.xml")
     # Racing-quad build: thrust-to-weight ~8 instead of 4. Measured effect on a 2 m
     # lateral dodge is 0.78s -> 0.62s; drag caps lateral speed near 8 m/s, so this
@@ -143,6 +144,7 @@ def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0
     d.qpos[3:7] = [1, 0, 0, 0]
     mujoco.mj_forward(m, d)
 
+    vision_enabled = bool(vision and use_jev)
     pilot = flight.Pilot(m)
     pilot.max_tilt = np.deg2rad(35.0)
     pilot.max_acc = 30.0
@@ -154,7 +156,7 @@ def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0
     # At 15 m a 5-sector fan over +/-40deg cannot resolve a 1.3 m gap edge at all.
     eye = flight.Eye(m, target_body="car", ignore_below=None,
                      floor_geom="floor_t", shell=SHELL, threat_fov=30.0, n_sectors=9,
-                     walls=("wallL", "wallR"))
+                     walls=("wallL", "wallR"), vision=vision_enabled)
     nav = Nav(v_car)
     tac = TT.FastTactician(workers=workers, model=model) if use_jev else None
     judg = dict(TT.DEFAULT)
@@ -244,7 +246,7 @@ def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0
                    "tan_h": eye.tan_h, "climbing": nav.alt_sp > CRUISE_ALT + 0.15}
             writer.append_data(hud.draw(big.render(), depth, scene, judg, tel))
             tape.append({"qpos": d.qpos.copy().tolist(), "mocap": d.mocap_pos.copy().tolist(),
-                         "depth": depth.astype(np.float16), "scene": scene,
+                         "depth": depth.astype(np.float16), "scene": strip_image_for_log(scene),
                          "judg": dict(judg), "tel": {k: v for k, v in tel.items() if k != "tan_h"}})
 
         if pos[2] < 0.4:       # on the floor: it is down and not coming back
@@ -254,7 +256,9 @@ def episode(v_car=8.0, seconds=40.0, use_jev=True, workers=4, video=None, seed=0
         writer.close()
         np.save(video + ".tape.npy", np.array(tape, dtype=object), allow_pickle=True)
     dist = float(d.qpos[0] - (20.0 - STANDOFF))
-    out = {"model": tac.model if tac else "baseline", "v_car": v_car, "jev": use_jev, "collisions": hits,
+    out = {"model": tac.model if tac else "baseline", "v_car": v_car, "jev": use_jev,
+           "vision": vision_enabled, "images_sent": tac.images_sent if tac else 0,
+           "collisions": hits,
            "distance_m": round(dist, 1),
            "clean_distance_m": round((first_hit_x - (20.0 - STANDOFF)) if first_hit_x else dist, 1),
            "target_visible_pct": round(100 * vis / max(frames, 1), 1),
@@ -280,11 +284,15 @@ if __name__ == "__main__":
                    help="Model to use (e.g. jev-latest for native, or ~typesafe/jev-latest / provider/model for OpenRouter)")
     p.add_argument("--provider", choices=["auto", "typesafe", "native", "openrouter"], default="auto",
                    help="Explicitly force API provider (auto detects from --model)")
+    p.add_argument("--vision", "--send-image", dest="vision", action="store_true",
+                   default=os.environ.get("JEV_VISION", "").lower() in ("1", "true", "yes"),
+                   help="Render onboard camera RGB frames and send them alongside text telemetry to "
+                        "multimodal decision models (can also be enabled via JEV_VISION=1).")
     a = p.parse_args()
     if a.provider == "openrouter":
         os.environ["USE_OPENROUTER"] = "1"
     elif a.provider in ("typesafe", "native"):
         os.environ["USE_OPENROUTER"] = "0"
     for v in a.speeds:
-        r = episode(v, a.seconds, not a.no_jev, a.workers, a.video, model=a.model)
+        r = episode(v, a.seconds, not a.no_jev, a.workers, a.video, model=a.model, vision=a.vision)
         print(json.dumps(r), flush=True)

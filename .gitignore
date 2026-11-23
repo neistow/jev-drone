@@ -6,10 +6,18 @@
 *_key*
 secrets*
 
-# ---- local env ----
+# ---- local env & editors ----
 .venv/
 __pycache__/
 *.py[cod]
+.idea/
+.vscode/
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+
+# ---- local AI agent tooling ----
+.agents/
 
 # ---- vendored upstream model (fetched by setup.sh) ----
 mujoco_menagerie/
@@ -19,9 +27,21 @@ mujoco_menagerie/
 *.mp4
 !site/public/figures/*.mp4
 *.npy
-.idea/
 tmp/
 MUJOCO_LOG.TXT
 *.log
 /*.png
 !docs/*.png
+
+# ---- raw benchmark runs & local data ----
+benchmark results/
+benchmark_results/
+benchmark_results_v2/
+training-data/
+
+# ---- manuscript drafts & reference PDFs ----
+articles_sample/
+/*.pdf
+docs/article_structure_and_plan.md
+docs/article_structure_and_plan_ua.md
+docs/literature_review.md

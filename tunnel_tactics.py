@@ -86,7 +86,7 @@ def build_state(scene, speed, sideways=0.0, climbrate=0.0):
     0.8s away and must be dodged NOW; at 4 m/s it is three seconds of nothing.
     Time-to-contact is the quantity the decision actually turns on."""
     v = max(speed, 0.5)
-    obs = dict(scene)
+    obs = {k: val for k, val in scene.items() if k != "camera_image"}
     obs["seconds_to_blockage_ahead"] = round(scene["free_ahead_level_m"] / v, 2)
     obs["seconds_if_we_climb"] = round(scene["free_ahead_above_m"] / v, 2)
     obs["seconds_if_we_dive"] = round(scene["free_ahead_below_m"] / v, 2)
@@ -95,7 +95,10 @@ def build_state(scene, speed, sideways=0.0, climbrate=0.0):
     # and sails straight through the gap into the far wall.
     obs["already_sliding_sideways_mps"] = round(sideways, 2)   # + is to the left
     obs["already_changing_height_mps"] = round(climbrate, 2)
-    return {"aircraft": AIRCRAFT, "speed_mps": round(speed, 1), "observed": obs}
+    state = {"aircraft": AIRCRAFT, "speed_mps": round(speed, 1), "observed": obs}
+    if "camera_image" in scene:
+        state["camera_image"] = scene["camera_image"]
+    return state
 
 
 DEFAULT = {"steer": 2.0, "height": 2.0, "risk": 0.0, "confidence": 0.0,
@@ -108,7 +111,7 @@ class FastTactician:
         self.model = self.client.model
         self.n = workers or THRESHOLDS["workers"]
         self.budget = budget
-        self.calls = self.errors = self.tokens = 0
+        self.calls = self.images_sent = self.errors = self.tokens = 0
         self.attempts = 0
         self.last_error = None
         self.latency = []
@@ -159,7 +162,8 @@ class FastTactician:
             scene, sim_t, speed, seq, sw, cr = cur
             t0 = time.time()
             try:
-                r = self.client.system_one(state=build_state(scene, speed, sw, cr),
+                state = build_state(scene, speed, sw, cr)
+                r = self.client.system_one(state=state,
                                            model=self.model, questions=QUESTIONS)
                 a = r.answers
                 j = {"steer": float(a["steer"].score),
@@ -170,6 +174,8 @@ class FastTactician:
                      "source": "jev", "sim_t": sim_t}
                 with self._lock:
                     self.calls += 1
+                    if "camera_image" in state:
+                        self.images_sent += 1
                     self.tokens += r.usage.input_tokens + r.usage.output_tokens
                     self.latency.append(time.time() - t0)
                     if seq > self._judg_seq:
@@ -190,7 +196,7 @@ class FastTactician:
 
     def stats(self):
         lat = sorted(self.latency)
-        return {"calls": self.calls, "attempts": self.attempts,
+        return {"calls": self.calls, "images_sent": self.images_sent, "attempts": self.attempts,
                 "errors": self.errors, "tokens": self.tokens,
                 "workers": self.n, "last_error": self.last_error,
                 "median_latency_s": round(lat[len(lat) // 2], 3) if lat else None,

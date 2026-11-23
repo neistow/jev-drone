@@ -16,6 +16,7 @@ import numpy as np
 import mujoco
 import flight
 from tactics import THRESHOLDS as THRESH, decision_needed
+from api_adapter import strip_image_for_log
 
 STANDOFF = 3.5
 MIN_ALT = 1.15           # never command a descent below this; the floor is invisible to a
@@ -239,7 +240,7 @@ class Guidance:
         return v_world, yaw_cmd, acted, reflex
 
 
-def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None, realtime=True, export=None, model="jev-latest"):
+def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None, realtime=True, export=None, model="jev-latest", vision=False):
     rng = np.random.default_rng(seed)
     m = mujoco.MjModel.from_xml_path("world.xml")
     d = mujoco.MjData(m)
@@ -251,8 +252,9 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
     d.qpos[3:7] = [1, 0, 0, 0]
     mujoco.mj_forward(m, d)
 
+    vision_enabled = bool(vision and use_jev)
     pilot = flight.Pilot(m)
-    eye = flight.Eye(m)
+    eye = flight.Eye(m, vision=vision_enabled)
     guide = Guidance(eye)
     tac = None
     if use_jev:
@@ -315,7 +317,7 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
                 if export and (judg.get("maneuver"), judg.get("source")) != prev:
                     # a copy of Jev's raw answer, taken before guidance can act on it
                     decision_log.append({"time": t, "pos": pos.tolist(), "yaw": yaw,
-                                         "scene": scene, "judg": dict(judg)})
+                                         "scene": strip_image_for_log(scene), "judg": dict(judg)})
                 if TRACE and (judg.get("maneuver"), judg.get("source")) != prev:
                     print("  t=%5.1f %-11s p=%.2f risk=%.2f lost=%.2f | pos=(%.1f,%.1f,%.1f) blk=%d/5 near=%.2f tall=%s vis=%s"
                           % (t, judg["maneuver"], (judg.get("probabilities") or {}).get(judg["maneuver"], 0),
@@ -369,13 +371,15 @@ def episode(seed=0, seconds=35.0, use_jev=True, video=None, hz=None, budget=None
                    "tan_h": eye.tan_h, "climbing": bool(guide.climb_hold)}
             writer.append_data(hud.draw(big.render(), depth, scene, judg, tel))
             tape.append({"qpos": d.qpos.copy().tolist(), "mocap": d.mocap_pos.copy().tolist(),
-                         "depth": depth.astype(np.float16), "scene": scene,
+                         "depth": depth.astype(np.float16), "scene": strip_image_for_log(scene),
                          "judg": judg, "tel": {k: v for k, v in tel.items() if k != "tan_h"}})
 
     if writer:
         writer.close()
         np.save(video + ".tape.npy", np.array(tape, dtype=object), allow_pickle=True)
-    out = {"model": tac.model if tac else "baseline", "seed": seed, "jev": use_jev, "collisions": hits,
+    out = {"model": tac.model if tac else "baseline", "seed": seed, "jev": use_jev,
+           "vision": vision_enabled, "images_sent": tac.images_sent if tac else 0,
+           "collisions": hits,
            "target_visible_pct": round(100 * vis / max(frames, 1), 1),
            "mean_standoff_m": round(float(np.mean(standoffs)), 2),
            "max_standoff_m": round(float(np.max(standoffs)), 2),
@@ -410,12 +414,16 @@ if __name__ == "__main__":
                    help="Model to use (e.g. jev-latest for native, or ~typesafe/jev-latest / provider/model for OpenRouter)")
     p.add_argument("--provider", choices=["auto", "typesafe", "native", "openrouter"], default="auto",
                    help="Explicitly force API provider (auto detects from --model)")
+    p.add_argument("--vision", "--send-image", dest="vision", action="store_true",
+                   default=os.environ.get("JEV_VISION", "").lower() in ("1", "true", "yes"),
+                   help="Render onboard camera RGB frames and send them alongside text telemetry to "
+                        "multimodal decision models (can also be enabled via JEV_VISION=1).")
     a = p.parse_args()
     if a.provider == "openrouter":
         os.environ["USE_OPENROUTER"] = "1"
     elif a.provider in ("typesafe", "native"):
         os.environ["USE_OPENROUTER"] = "0"
     for s in a.seeds:
-        r = episode(s, a.seconds, not a.no_jev, a.video, a.hz, a.budget, realtime=not a.fast, export=a.export, model=a.model)
+        r = episode(s, a.seconds, not a.no_jev, a.video, a.hz, a.budget, realtime=not a.fast, export=a.export, model=a.model, vision=a.vision)
         print(json.dumps(r))
         sys.stdout.flush()

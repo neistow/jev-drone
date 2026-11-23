@@ -12,7 +12,7 @@ NATIVE_MODEL_ALIASES = {
     "jev-1.14": "jev-preview",
     "jev-1.13": "jev-latest",
 }
-CHAT_ONLY_DECISION_MODELS = {"togethercomputer/tev1-4b-experimental"}
+CHAT_ONLY_DECISION_MODELS = set()
 
 
 class MockAnswer:
@@ -247,13 +247,54 @@ def serialize_questions(questions):
     return serialized
 
 
+def _collect_openrouter_images(obj):
+    """Return a list of all ``{"type": "image_url", ...}`` dicts nested inside ``obj``."""
+    found = []
+    if _is_image_url_part(obj):
+        found.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            found.extend(_collect_openrouter_images(v))
+    elif isinstance(obj, list):
+        for item in obj:
+            found.extend(_collect_openrouter_images(item))
+    return found
+
+
+def has_image_part(obj) -> bool:
+    """Return True if ``obj`` contains at least one OpenRouter/TypeSafe image part."""
+    return bool(_collect_openrouter_images(obj))
+
+
+def strip_image_for_log(obj):
+    """Return a copy of ``obj`` with raw base64 image data URLs replaced by a compact placeholder
+    so JSONL/JSON logs and numpy tapes do not bloat by tens of megabytes per run."""
+    if isinstance(obj, dict):
+        if obj.get("type") == "image_url" and isinstance(obj.get("image_url"), dict):
+            url = obj["image_url"].get("url", "")
+            detail = obj["image_url"].get("detail", "auto")
+            return {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"<omitted_base64_image:{len(url)}_chars>",
+                    "detail": detail,
+                },
+            }
+        return {k: strip_image_for_log(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [strip_image_for_log(v) for v in obj]
+    return obj
+
+
 def call_openrouter_chat(state, model, questions, api_key):
     """Fallback for models that only support standard Chat Completions."""
     sys_prompt = (
         "You are a tactical decision system. Analyze the state and answer every question. "
         "Return ONLY a valid JSON object mapping each question key to its answer."
     )
-    state_str = state if isinstance(state, str) else json.dumps(state, indent=2)
+    images = _collect_openrouter_images(state)
+    clean_state = strip_image_for_log(state) if images else state
+    state_str = clean_state if isinstance(clean_state, str) else json.dumps(clean_state, indent=2)
     q_wire = serialize_questions(questions)
 
     q_lines = ["QUESTIONS:"]
@@ -281,11 +322,12 @@ def call_openrouter_chat(state, model, questions, api_key):
         + f"\n\nReturn a JSON object with these exact keys: {list(q_wire.keys())}."
     )
 
+    user_content = [{"type": "text", "text": prompt}, *images] if images else prompt
     req_data = {
         "model": model,
         "messages": [
             {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": user_content},
         ],
         "temperature": 0,
         "response_format": {"type": "json_object"},
@@ -316,13 +358,132 @@ def call_openrouter_chat(state, model, questions, api_key):
     return MockResponse(content, res.get("usage", {}), model=res.get("model", model))
 
 
+OPENROUTER_MODEL_ALIASES = {
+    "perplexity/decider-flash-v1.2": "perplexity/pplx-decider-flash-v1.2",
+    "~perplexity/decider-flash-v1.2": "perplexity/pplx-decider-flash-v1.2",
+    "perplexity/decider-v1.2": "perplexity/pplx-decider-v1.2",
+    "~perplexity/decider-v1.2": "perplexity/pplx-decider-v1.2",
+}
+
+
+def _flatten_instructions_in_questions(q_wire):
+    out = {}
+    for k, q in q_wire.items():
+        q_copy = dict(q)
+        instr = q_copy.get("instructions")
+        if isinstance(instr, dict):
+            q_copy["instructions"] = " ".join(f"{ik}: {iv}" for ik, iv in instr.items())
+        out[k] = q_copy
+    return out
+
+
+def _decompose_questions_to_noul(q_wire):
+    """
+    Convert choice/score questions into binary noul questions for noul-only decision models
+    (such as respan/span-01 and respan/span-01-lite).
+    """
+    noul_qs = {}
+    meta = {}
+    for k, q in q_wire.items():
+        qtype = q.get("type", "noul")
+        instr = q.get("instructions", "")
+        if isinstance(instr, dict):
+            instr = " ".join(f"{ik}: {iv}" for ik, iv in instr.items())
+        crit = q.get("criteria")
+        if qtype == "choice" and isinstance(crit, dict):
+            meta[k] = ("choice", list(crit.keys()))
+            for opt, desc in crit.items():
+                noul_qs[f"{k}__{opt}"] = {
+                    "type": "noul",
+                    "instructions": f"{instr} Should the chosen option be '{opt}'?",
+                    "criteria": {
+                        "true": str(desc),
+                        "false": f"Do not choose '{opt}'; another option is better.",
+                    },
+                }
+        elif qtype == "score" and isinstance(crit, list):
+            meta[k] = ("score", max(1, len(crit) - 1))
+            noul_qs[k] = {
+                "type": "noul",
+                "instructions": str(instr),
+                "criteria": {
+                    "true": str(crit[-1]),
+                    "false": str(crit[0]),
+                },
+            }
+        else:
+            meta[k] = ("noul", None)
+            if isinstance(crit, dict):
+                crit_dict = {"true": str(crit.get("true", "Yes")), "false": str(crit.get("false", "No"))}
+            else:
+                crit_dict = {"true": str(crit or "Yes"), "false": "No"}
+            noul_qs[k] = {
+                "type": "noul",
+                "instructions": str(instr),
+                "criteria": crit_dict,
+            }
+    return noul_qs, meta
+
+
+def _reconstruct_from_noul_answers(raw_answers, meta):
+    reconstructed = {}
+    for k, (qtype, info) in meta.items():
+        if qtype == "choice":
+            raw_probs = {}
+            for opt in info:
+                ans = (raw_answers or {}).get(f"{k}__{opt}", {})
+                val = ans.get("noul", 0.0) if isinstance(ans, dict) else float(ans or 0.0)
+                raw_probs[opt] = max(0.0, float(val))
+            total = sum(raw_probs.values())
+            if total > 0:
+                probs = {opt: p / total for opt, p in raw_probs.items()}
+            else:
+                probs = {opt: 1.0 / max(1, len(info)) for opt in info}
+            best_opt = max(raw_probs, key=raw_probs.get) if raw_probs else (info[0] if info else "")
+            reconstructed[k] = {
+                "type": "choice",
+                "choice": best_opt,
+                "confidence": round(probs.get(best_opt, 1.0), 4),
+                "probabilities": probs,
+            }
+        elif qtype == "score":
+            ans = (raw_answers or {}).get(k, {})
+            val = ans.get("noul", 0.0) if isinstance(ans, dict) else float(ans or 0.0)
+            reconstructed[k] = {
+                "type": "score",
+                "score": float(val) * float(info),
+                "noul": float(val),
+            }
+        else:
+            reconstructed[k] = (raw_answers or {}).get(k, {"type": "noul", "noul": 0.0})
+    return reconstructed
+
+
 def call_openrouter_decisions(state, model, questions, api_key):
     """Hits OpenRouter's /api/alpha/decisions endpoint directly."""
-    norm_state = _normalize_openrouter_multimodal_state(state)
+    actual_model = OPENROUTER_MODEL_ALIASES.get(model, model)
+    clean_model = actual_model.removeprefix("~")
+    is_noul_only_respan = clean_model.startswith("respan/span-01")
+    is_scaledown = clean_model.startswith("scaledown/")
+
+    q_wire = serialize_questions(questions)
+    noul_meta = None
+
+    if is_noul_only_respan:
+        clean_state = strip_image_for_log(state) if has_image_part(state) else state
+        norm_state = clean_state if isinstance(clean_state, str) else json.dumps(clean_state)
+        q_wire, noul_meta = _decompose_questions_to_noul(q_wire)
+    elif is_scaledown:
+        clean_state = strip_image_for_log(state) if has_image_part(state) else state
+        norm_state = clean_state if isinstance(clean_state, str) else json.dumps(clean_state)
+        q_wire = _flatten_instructions_in_questions(q_wire)
+    else:
+        norm_state = _normalize_openrouter_multimodal_state(state)
+
     payload = {
-        "model": model,
+        "model": actual_model,
         "state": norm_state,
-        "questions": serialize_questions(questions),
+        "questions": q_wire,
     }
 
     req = urllib.request.Request(
@@ -342,7 +503,10 @@ def call_openrouter_decisions(state, model, questions, api_key):
         err_body = e.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"OpenRouter Decisions Error {e.code}: {err_body}") from e
 
-    return MockResponse(res.get("answers", {}), res.get("usage", {}), model=res.get("model", model))
+    answers = res.get("answers", {})
+    if noul_meta is not None:
+        answers = _reconstruct_from_noul_answers(answers, noul_meta)
+    return MockResponse(answers, res.get("usage", {}), model=res.get("model", actual_model))
 
 
 def call_typesafe_with_assets(state, model, questions, api_key, base_url=None):
